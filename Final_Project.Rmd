@@ -1,0 +1,1441 @@
+---
+title: "Access Loan Default Risk Through Demographic & Financial"
+author:
+- Viet Nguyen
+- Chien Tran
+- Ricky Xiong
+date: "`r Sys.Date()`"
+output:
+  word_document:
+    toc: true
+    toc_depth: '3'
+  html_document:
+    toc: true
+    toc_float: true
+    toc_collapsed: true
+    theme: cerulean
+    code_folding: hide
+    toc_depth: 3
+institute: Denison University
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE)
+```
+
+# Introduction
+
+Imagine applying for a loan without a credit history—it feels like trying to land a job without a resume. You’re left thinking, "How can I prove I’m reliable if no one gives me a chance?" This project is about rewriting that story. By leveraging data analytics, we aim to predict loan defaults more accurately, empowering individuals with limited or no credit history to access loans while minimizing risks for financial institutions. This is about making lending smarter, fairer, and more inclusive for everyone.
+
+This project focuses on Home Credit Group, a global financial institution dedicated to promoting financial inclusion. Our goal is to refine their lending decisions by using advanced data analytics to predict the likelihood of loan defaults. By reducing default risks, we aim to foster financial inclusion and enable fairer access to credit, helping underserved populations while safeguarding institutional sustainability.
+
+Through this project, we take a step toward a financial ecosystem where trust is built not only on history but also on data-driven insights.
+
+## Objective
+
+In this dataset, we aim to investigate whether an applicant’s social demographics and wealth factors will be important in predicting whether an applicant will repay a loan or not.
+
+## Data Sources 
+
+The data we used are from Kaggle (the link can be find under the reference) and are called Home Credit Default Risk. The dataset is mainly from 6 countries in the CIS and SEA regions: Kazakhstan, Russia, Vietnam, China, Indonesia, and the Philippines. The company collects and utilizes a variety of data points to assess the creditworthiness of clients with little or no traditional credit history.
+
+Variables: The data includes demographic details, financial information, employment status, housing characteristics, credit bureau inquiries, and a target variable indicating whether a client had payment difficulties. 
+
+Usage: Assess loan default risk, helping financial institutions make more informed lending decisions.
+
+## Ethical Consideration
+
+Data Ownership and Privacy: We should note that though our dataset is publicly available, it’s critical to protect the privacy of individuals and firms, especially in dealing with datasets containing information about communities.
+
+Data Ownership and Usage: The data used in this analysis belongs to the Home Credit Group. It is essential that this report adhere to their terms of use and respect their ownership rights when utilizing this data for analysis.
+
+Community and Individual Welfare: We need to exercise caution during the analysis process in order not to perpetuate discrimination by perpetuating existing biases related to race, gender, etc. In addition, we need to consider the potential influence of policy decisions and market behaviors, the findings of the report may result in or support changes that harm or cause consequences for vulnerable populations.
+
+## Project Scope
+
+This project is designed to enhance financial decision-making by leveraging advanced data analytics to predict loan defaults with a focus on fairness and inclusivity, for example, our we will develop models that allow financial institutions to evaluate loan applicants with little or no credit history. This fosters greater access to credit for underserved communities while maintaining a balance between financial inclusion and risk management.
+
+## Stakeholders
+
+- Home Credit Group: The organization providing the data and is responsible for delivering financial services to underserved customers.
+- Clients (Loan Applicants): The individuals seeking loans and affected by the risk of default, whose financial behaviors are being analyzed.
+- Financial Institutions: Other lenders or institutions who may benefit from the insights to improve their loan issuance processes.
+- Regulatory Bodies: Government agencies or organizations overseeing financial regulations, responsible lending, and consumer protection.
+- Community/Consumers: Broader societal groups who may be impacted by more responsible lending practices, improving financial inclusion and reducing discriminatory practices.
+
+# Data Manipulation
+
+## Import Library
+
+```{r, message=FALSE, warning=FALSE}
+# Import library
+library(tidyverse)
+library(caret)
+library(dplyr)
+library(fixest)
+library(gtsummary)
+library(ggthemes)
+library(modelsummary)
+library(glmnet)
+library(kableExtra)
+library(knitr)
+library(MASS)
+library(smotefamily)
+library(class)
+library(pROC)
+library(scales)
+library(reshape2)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(gt)
+library(factoextra)
+library(xgboost)
+library(doParallel)
+```
+
+Summary of what each library does:
+
+Data Manipulation and Visualization:
+
+tidyverse: A collection of R packages (e.g., ggplot2, dplyr, tidyr, etc.) designed for data science tasks, including data manipulation, visualization, and analysis.
+
+dplyr: Part of the tidyverse, used for data manipulation tasks such as filtering, summarizing, and joining datasets.
+
+ggthemes: Adds additional themes and scales to ggplot2 for enhanced visualization aesthetics.
+
+scales: Provides tools for handling numeric scaling and transformations in visualizations.
+
+reshape2: Tools for reshaping data between wide and long formats for analysis or visualization.
+
+Statistical Modeling and Machine Learning
+
+caret: A comprehensive package for training and evaluating machine learning models with various preprocessing options and cross-validation methods.
+glmnet: Implements generalized linear models with penalties like Lasso and Ridge regression for regularization.
+
+MASS: Includes functions for statistical methods and datasets, including linear and nonlinear modeling.
+
+smotefamily: Provides oversampling methods like SMOTE for dealing with imbalanced datasets.
+
+class: Includes basic functions for classification like k-Nearest Neighbors (k-NN).
+
+randomForest: Implements random forest algorithms for classification and regression tasks.
+
+xgboost: A scalable and efficient gradient-boosting framework for machine learning tasks.
+
+Summarization and Reporting
+
+gtsummary: Generates publication-ready summary tables for statistical analyses.
+
+modelsummary: Creates summary tables for regression models and other statistical outputs.
+
+kableExtra: Enhances knitr::kable() tables with advanced formatting options for reporting.
+
+knitr: Integrates R code into reports and generates dynamic documents (e.g., RMarkdown).
+
+Visualization:
+
+rpart.plot: Visualizes decision tree models created by rpart.
+
+factoextra: Visualizes multivariate data analyses like PCA and clustering.
+
+rpart: Implements recursive partitioning and regression trees.
+
+Statistical Analysis:
+
+pROC: Tools for visualizing and analyzing receiver operating characteristic (ROC) curves.
+
+gt: Constructs publication-quality tables.
+
+Trainning Model:
+
+doParallel: Optimize trainning model.
+
+## Import the Data
+
+First, we import our data. Since we have already download the data file from Kaggle, so we are going to use `read.csv` to read our data as dataframe here.
+
+```{r}
+# Read csv file and import the data
+
+credit <- read.csv("application_train.csv") 
+```
+
+## Data Overview
+
+Next, we going to start with a summary of this dataset to get an overview of our data.
+
+```{r}
+# Create a summry statistic of the dataset before processing
+summary_table <- credit %>%
+  summarise(
+    `Number of rows` = n(),
+    `Number of columns` = ncol(.),
+    `Character columns` = sum(sapply(., is.character)),
+    `Numeric columns` = sum(sapply(., is.numeric))
+  ) %>%
+  t() %>%
+  as.data.frame()
+
+colnames(summary_table) <- c("Values")
+
+summary_table <- tibble::rownames_to_column(summary_table, "Metric")
+
+# Create a styled table using `gt`
+gt_summary <- summary_table %>%
+  gt() %>%
+  tab_header(
+    title = "Data Summary"
+  )
+
+# Display the styled summary
+gt_summary
+```
+
+There is a total of 307,511 observations with 122 variables in our dataset, where 16 of these variables have character data type and 106 contain numerical data type, which could be binary or continuous. Since the variable range is diverese, we will categorize variables nicely to avoid multicolinearity or overfitting. 
+
+Now we split our data into training and test dataset, since this is a large dataset, we choose to split it into 80/20 ratio so that training data could capture the data well.
+
+```{r}
+# Set a random seed for reproducibility
+set.seed(123) 
+# Split the data (example, assuming 'credit' is your dataset)
+train_index <- createDataPartition(credit$TARGET, p = 0.8, list = FALSE)  # 70% training, 30% testing
+
+# Create training and testing datasets
+train_data <- credit[train_index, ]
+test_data <- credit[-train_index, ]
+
+# Save the training and testing sets to CSV files (for others to download)
+
+#write.csv(train_data, "train_data.csv", row.names = FALSE)
+#write.csv(test_data, "test_data.csv", row.names = FALSE)
+
+```
+
+Because we want other users to use the same dataset as we do, we save the training and testing data into `csv` files.
+
+```{r}
+# Separating the data into training and testing datasets.
+train <- read.csv("train_data.csv")
+test_data <- read.csv("test_data.csv")
+```
+
+Next, we going to make a data summary for the missing values in the data.
+
+## Missing Values
+
+When working with any dataset, we should handle missing values carefully to provide a dependable and accurate project. With character columns, it is possible that we would encounter empty strings. We would want to transform this into `N/A` value so we can easily fill in missing values.
+
+```{r}
+train <- train %>%
+  mutate(across(where(~ is.character(.) | is.factor(.)), ~ na_if(., "")))
+```
+
+Next, we create a missing value summary from this dataset.
+
+```{r}
+# Calculate missing values summary
+
+missing_summary <- train %>%
+  summarise(across(everything(), ~ sum(is.na(.)))) %>%
+  pivot_longer(cols = everything(), names_to = "Column", values_to = "Missing Count") %>%
+  mutate(
+    `Total Rows` = nrow(train),
+    `Missing Percentage (%)` = (`Missing Count` / `Total Rows`) * 100
+  ) %>%
+  arrange(desc(`Missing Count`))
+
+# Create a styled table using `gt`
+gt_missing_summary <- missing_summary %>%
+  gt() %>%
+  tab_header(
+    title = "Missing Values Summary"
+  ) %>%
+  fmt_number(
+    columns = `Missing Count`,
+    decimals = 0
+  ) %>%
+  fmt_number(
+    columns = `Missing Percentage (%)`,
+    decimals = 2
+  )
+
+# Display the styled table
+gt_missing_summary
+
+```
+
+Based on the table above, there are 50 columns that has more than 47% missing data. This is concerning since such a large shortage in data cannot represent the population appropriately. As for the other variables with missing values, we will fill in with appropriate values. 
+
+Columns with more than 47% missing data are dropped for several reasons. First, columns with excessive missing values provide limited statistical or predictive utility. The absence of data diminishes their overall relevance and reduces their contribution to meaningful analysis. Second, imputing missing values for columns with such a high proportion of missing data introduces significant challenges. The imputation process is likely to result in considerable bias or inaccuracies, which could compromise the reliability of the dataset. Third, removing these columns enhances computational efficiency and simplifies the dataset. This reduction in complexity can improve the performance of subsequent analyses or predictive models.
+
+For instance, specific columns like COMMONAREA_AVG and YEARS_BUILD_AVG have missing percentages exceeding 65%, indicating that the data for these variables is highly incomplete. Although these columns might contain potentially valuable information, the high proportion of missing values makes reliable imputation impractical.By setting the threshold for missing data at 47%, we aim to balance data retention and quality. This approach ensures that enough information is preserved while minimizing the risk of introducing excessive noise. For example, columns like YEARS_BEGINEXPLUATATION_AVG, which has 48.78% missing data, are excluded to maintain the overall integrity of the analysis.
+
+The cleaned dataset will contains more reliable variables for analysis, ensuring that models built will perform with accurate and robust performance by handling incomplete information.
+
+## Data Imputation
+
+For the first step of cleaning the data, we will be dropping all columns with more than 47% missing values. As we have mentioned, columns with over 47% missing values are unreliable to use in our project because of the huge gap of misinformation. Furthermore, we can't decide which values are suited to fill in to provided an accurate and unbiased result.
+
+```{r}
+# Addressing the value of threshold. 
+missing_threshold <- 47
+
+# Calculate missing percentage for each column
+missing_summary <- train %>%
+  summarise(across(everything(), ~ sum(is.na(.)) / nrow(train) * 100)) %>%
+  pivot_longer(cols = everything(), names_to = "Column", values_to = "Missing_Percentage")
+
+# Identify columns to drop
+columns_to_drop <- missing_summary %>%
+  filter(Missing_Percentage > missing_threshold) %>%
+  pull(Column)
+
+# Drop the identified columns
+train_drop <- train %>%
+  dplyr::select(-all_of(columns_to_drop))
+```
+
+Next up, we deal with numerical missing data. Initially, we made a summary statistics of numerical columns with missing values.
+
+```{r}
+# Identify columns with missing data and calculate the percentage of missing values
+missing_data <- sapply(train_drop, function(x) sum(is.na(x)) / length(x) * 100)
+
+# Select only numerical columns with missing data
+missing_columns <- names(missing_data[missing_data > 0])
+numerical_columns <- train[missing_columns] %>% select_if(is.numeric)
+
+# Check that missing_columns are available in the dataset
+valid_missing_columns <- intersect(missing_columns, names(numerical_columns))
+
+# Create a table showing the missing data percentage and the data type for these columns
+summary_stats <- data.frame(
+  Column = valid_missing_columns,
+  Missing_Percentage = missing_data[valid_missing_columns],
+  Data_Type = sapply(numerical_columns[valid_missing_columns], class),
+  Mean = sapply(numerical_columns[valid_missing_columns], function(x) mean(x, na.rm = TRUE)),
+  Median = sapply(numerical_columns[valid_missing_columns], function(x) median(x, na.rm = TRUE)),
+  Std_Dev = sapply(numerical_columns[valid_missing_columns], function(x) sd(x, na.rm = TRUE))
+) %>%
+  arrange(desc(Missing_Percentage))
+
+# Display the summary table with gt
+summary_stats %>%
+  gt() %>%
+  tab_header(
+    title = "Numerical Columns with Missing Data and Summary Statistics"
+  ) %>%
+  fmt_number(
+    columns = c(Missing_Percentage, Mean, Median, Std_Dev),
+    decimals = 2
+  ) %>%
+  cols_label(
+    Column = "Variable",
+    Missing_Percentage = "Percentage (%)",
+    Data_Type = "Data Type",
+    Mean = "Mean",
+    Median = "Median",
+    Std_Dev = "Standard Deviation"
+  )
+
+```
+
+For the numerical data, appropriate imputation strategies will be applied based on the characteristics of the variables and their context.
+
+For columns that represent counts of events, missing values are likely indicative of the absence of such events. In these cases, zero imputation is a logical choice because it aligns with the interpretation of no activity. This approach ensures that the data remains consistent with its intended meaning without introducing bias.
+
+For features with skewed distributions, such as external score variables, median imputation is more suitable. The median is robust against outliers and better reflects the central tendency of the data compared to the mean, making it a reliable method to address missing values while preserving the original distribution.
+
+Columns that track social circle activity or defaults often include many zeros, and missing values may signify no activity or no defaults. For these variables, zero imputation is a natural choice because it aligns with the context of no observed activity. Alternatively, mode imputation could be considered if the mode represents a commonly observed non-zero value.
+
+For monetary values that are highly variable and skewed, median imputation is also appropriate. This method ensures that missing data is replaced in a way that avoids distortion from extreme values, maintaining the integrity of the overall distribution.
+
+Finally, for numeric variables with small percentages of missing data, mean imputation is suitable. This approach works well for data that is normally distributed or nearly normal and is unlikely to introduce significant bias due to the low proportion of missing values. Using the mean ensures that the imputed values remain consistent with the dataset's overall trends.
+
+By tailoring the imputation method to the nature of each variable, this strategy preserves the accuracy and reliability of the dataset for subsequent analysis.
+
+```{r}
+# Replace missing values using the median or mean as appropriate
+train_fill <- train_drop %>%
+  mutate(
+    EXT_SOURCE_3 = ifelse(is.na(EXT_SOURCE_3), median(EXT_SOURCE_3, na.rm = TRUE), EXT_SOURCE_3),
+    AMT_REQ_CREDIT_BUREAU_HOUR = ifelse(is.na(AMT_REQ_CREDIT_BUREAU_HOUR), 0, AMT_REQ_CREDIT_BUREAU_HOUR),
+    AMT_REQ_CREDIT_BUREAU_DAY = ifelse(is.na(AMT_REQ_CREDIT_BUREAU_DAY), 0, AMT_REQ_CREDIT_BUREAU_DAY),
+    AMT_REQ_CREDIT_BUREAU_WEEK = ifelse(is.na(AMT_REQ_CREDIT_BUREAU_WEEK), 0, AMT_REQ_CREDIT_BUREAU_WEEK),
+    AMT_REQ_CREDIT_BUREAU_MON = ifelse(is.na(AMT_REQ_CREDIT_BUREAU_MON), median(AMT_REQ_CREDIT_BUREAU_MON, na.rm = TRUE), AMT_REQ_CREDIT_BUREAU_MON),
+    AMT_REQ_CREDIT_BUREAU_QRT = ifelse(is.na(AMT_REQ_CREDIT_BUREAU_QRT), median(AMT_REQ_CREDIT_BUREAU_QRT, na.rm = TRUE), AMT_REQ_CREDIT_BUREAU_QRT),
+    AMT_REQ_CREDIT_BUREAU_YEAR = ifelse(is.na(AMT_REQ_CREDIT_BUREAU_YEAR), median(AMT_REQ_CREDIT_BUREAU_YEAR, na.rm = TRUE), AMT_REQ_CREDIT_BUREAU_YEAR),
+    OBS_30_CNT_SOCIAL_CIRCLE = ifelse(is.na(OBS_30_CNT_SOCIAL_CIRCLE), median(OBS_30_CNT_SOCIAL_CIRCLE, na.rm = TRUE), OBS_30_CNT_SOCIAL_CIRCLE),
+    DEF_30_CNT_SOCIAL_CIRCLE = ifelse(is.na(DEF_30_CNT_SOCIAL_CIRCLE), median(DEF_30_CNT_SOCIAL_CIRCLE, na.rm = TRUE), DEF_30_CNT_SOCIAL_CIRCLE),
+    OBS_60_CNT_SOCIAL_CIRCLE = ifelse(is.na(OBS_60_CNT_SOCIAL_CIRCLE), median(OBS_60_CNT_SOCIAL_CIRCLE, na.rm = TRUE), OBS_60_CNT_SOCIAL_CIRCLE),
+    DEF_60_CNT_SOCIAL_CIRCLE = ifelse(is.na(DEF_60_CNT_SOCIAL_CIRCLE), median(DEF_60_CNT_SOCIAL_CIRCLE, na.rm = TRUE), DEF_60_CNT_SOCIAL_CIRCLE),
+    EXT_SOURCE_2 = ifelse(is.na(EXT_SOURCE_2), median(EXT_SOURCE_2, na.rm = TRUE), EXT_SOURCE_2),
+    AMT_GOODS_PRICE = ifelse(is.na(AMT_GOODS_PRICE), median(AMT_GOODS_PRICE, na.rm = TRUE), AMT_GOODS_PRICE),
+    AMT_ANNUITY = ifelse(is.na(AMT_ANNUITY), median(AMT_ANNUITY, na.rm = TRUE), AMT_ANNUITY),
+    CNT_FAM_MEMBERS = ifelse(is.na(CNT_FAM_MEMBERS), median(CNT_FAM_MEMBERS, na.rm = TRUE), CNT_FAM_MEMBERS),
+    DAYS_LAST_PHONE_CHANGE = ifelse(is.na(DAYS_LAST_PHONE_CHANGE), median(DAYS_LAST_PHONE_CHANGE, na.rm = TRUE), DAYS_LAST_PHONE_CHANGE)
+  )
+
+```
+
+Similar to numerical columns, we address any character columns with missing values with a statistic summary table. 
+
+```{r}
+# Step 1: Identify character columns
+character_columns <- train_drop %>% dplyr::select(where(is.character))
+
+# Step 2: Calculate missing data percentage, number of missing data, and other summary statistics
+summary_stats <- character_columns %>%
+  reframe(
+    Column = names(.),
+    Missing_Count = sapply(., function(x) sum(is.na(x))),  # Number of missing values
+    Missing_Percentage = sapply(., function(x) sum(is.na(x)) / length(x) * 100),  # Percentage of missing values
+    Unique_Values = sapply(., function(x) length(unique(x))),  # Count of unique values
+    Mode = sapply(., function(x) {
+      if (length(unique(x)) == 1) return(unique(x))
+      else return(names(sort(table(x), decreasing = TRUE))[1])  # Mode or most frequent value
+    })
+  ) %>%
+  arrange(desc(Missing_Percentage))
+
+# Step 3: Display summary table with gt
+summary_stats %>%
+  gt() %>%
+  tab_header(
+    title = "Character Columns Summary"
+  ) %>%
+  fmt_number(
+    columns = c(Missing_Percentage, Missing_Count),
+    decimals = 2
+  ) %>%
+  cols_label(
+    Column = "Variable",
+    Missing_Count = "Missing Count",
+    Missing_Percentage = "Percentage (%)",
+    Unique_Values = "Unique Values",
+    Mode = "Most Frequent Value"
+  )
+
+
+```
+
+For categorical variables with missing data, appropriate strategies will be applied based on the proportion of missing values and the significance of the feature.
+
+For OCCUPATION_TYPE, the proportion of missing data is significant at 31.35%. Dropping rows with missing values would result in considerable data loss, which is undesirable. Occupation is a key socio-economic variable that is likely predictive of an applicant's ability to repay a loan. Additionally, missing occupation data might represent a specific group of applicants, such as those with irregular jobs or no formal employment, who could exhibit distinct loan repayment behaviors. To address this, missing values will be replaced with the category "Unknown." This approach preserves the data for analysis and treats "Unknown" as a meaningful category, ensuring that the potential predictive power of this feature is retained even when specific occupation information is unavailable.
+
+For NAME_TYPE_SUITE, the proportion of missing data is much lower, at just 0.42%. This feature may reflect the applicant’s living situation, such as whether they are unaccompanied, which could have some relevance to loan repayment behavior. Although this variable is likely less critical than occupation, it still contributes to the analysis. Missing values will be replaced with the most frequent category, "Unaccompanied." Since the missing data is minimal, this approach maintains the feature’s utility without significantly affecting the overall quality of the dataset.
+
+By using these strategies, the integrity and predictive value of the dataset will be preserved while ensuring that missing data is handled in a meaningful and contextually appropriate manner.
+
+
+```{r}
+# Handling missing values for OCCUPATION_TYPE
+train_filled <- train_fill %>%
+  mutate(OCCUPATION_TYPE = ifelse(is.na(OCCUPATION_TYPE), "Unknown", OCCUPATION_TYPE)) %>% 
+  mutate(NAME_TYPE_SUITE = ifelse(is.na(NAME_TYPE_SUITE), "Unaccompanied", NAME_TYPE_SUITE))
+```
+
+Next, some of the categorical data have data that is negative, which could be due to the way the data is enter, therefore, we will take the absolute values of those columns.
+
+```{r}
+train_filled <- train_filled %>%
+  mutate(across(c(DAYS_BIRTH, DAYS_LAST_PHONE_CHANGE, DAYS_EMPLOYED, DAYS_ID_PUBLISH, DAYS_REGISTRATION), abs))
+```
+
+
+```{r}
+# Reorder and relabel the education categories
+train_filled$NAME_EDUCATION_TYPE <- factor(
+  train_filled$NAME_EDUCATION_TYPE,
+  levels = c("Secondary / secondary special", "Lower secondary", "Incomplete higher", 
+             "Higher education", "Academic degree"),
+  labels = c("Secondary", "Lower Secondary", "Incomplete Higher", "Higher Education", "Academic Degree")
+)
+```
+
+## Exploratory Data Analysis
+
+The goal of our project is to help Home Credit Group make better lending decision and reduce their risk of default. Thus, one of our most concerning aspect/variable is whether the client repay a loan or not. Variable `target` indicates whether a client made a payment on time or they are having difficulties repaying. If `target` is 1 then it indicates a late or missing payment. We choose this variable as our independent variable.
+
+First, we want to see the distribution of the `target` variable 
+
+```{r}
+# Distribution of repayment (Loan Repayment Status)
+ggplot(train_filled, aes(x = factor(TARGET))) + 
+  geom_bar(fill = c("#4F81BD", "#B0B0B0")) +
+  labs(x = "Repayment", y = "Thoundsands", title = "Frequency of Loan Repayment Status") +
+  scale_x_discrete(labels = c("1" = "Difficulties", "0" = "On Time")) +
+    scale_y_continuous(labels = scales::label_comma(scale = 1e-3)) +
+  theme_minimal(base_size = 13) +                           
+  theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5)) 
+
+```
+
+From this information, we see that there is an imbalanced within `target`. There are far more loans that were repaid on time than loans that were not. Once we get into the models, we can weight the classes by their representation in the data to reflect this imbalance.
+
+Since we take social demographic factors into accounting for the effect of default, we want to see if `target` is affected by education level.
+
+```{r}
+# Plotting the distribution of repayment by education level
+ggplot(train_filled, aes(y = NAME_EDUCATION_TYPE, fill = factor(TARGET))) +
+  geom_bar(position = "fill") +  # Stacked percentage bars
+scale_fill_manual(values = c("#4F81BD", "#B0B0B0"), labels = c("On Time", "Difficulties")) +
+  labs(x = "Proportion", y = "", title = "Loan Repayment Status by Education Level") +
+  theme_minimal(base_size = 13) +                           
+  theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+    axis.text.y = element_text(angle = 0, hjust = 1),  # Ensure labels on y-axis are horizontal
+    legend.position = "top"  # Move the legend to the top
+  ) +
+  scale_y_discrete(labels = function(x) str_wrap(x, width = 15)) +  # Wrap long labels
+  guides(fill = guide_legend(title = "Repayment"))  # Add title for legend +
+
+```
+
+Accroding to the plot, higher levels of education, such as "Academic Degree" and "Higher Education," show a significantly larger proportion of on-time repayments compared to those in lower educational categories. This trend suggests that education level is a strong predictor of financial reliability in loan repayment.
+
+For "Lower Secondary" or "Secondary" education exhibit a visibly higher proportion of getting repayment difficulties, such a ratio could reflect limited financial literacy or employment opportunities, leading to greater challenges in meeting repayment schedules.
+
+Finally, for "Incomplete Higher Education", the individuals in this category exhibit repayment patterns that are between those of lower and higher educational levels.
+
+In many Asian countries, higher education significantly improves job prospects in urban areas, where wages are typically higher. Conversely, those with lower education levels may remain in informal or unstable employment sectors, leading to financial strain and repayment difficulties. Culturally, familial obligations and societal pressures in some Asian countries may also play a role, with educated individuals being better equipped to manage these dynamics.
+
+After looking at the interaction between education level and default proportion, our team think we still need to show another factor that might effect the default rate in our dataset, so we plots the repayment status by age:
+
+```{r}
+# Measuring wages 
+new_data <- train_filled %>%
+  mutate(Age_Group = cut(DAYS_BIRTH / 365, 
+                         breaks = c(0, 25, 35, 45, 55, 65, 100), 
+                         labels = c("18-25", "26-35", "36-45", "46-55", "56-65", "66+"), 
+                         right = FALSE)) %>%
+  dplyr::select(Age_Group, TARGET)  # Select only the Age Group and TARGET columns
+
+# Bar plot with two bars per age group for Loan Repayment Status
+ggplot(new_data, aes(x = Age_Group, fill = factor(TARGET))) +
+  geom_bar(position = "dodge") +  # Use dodge for side-by-side bars
+  scale_fill_manual(values = c("#4F81BD", "#B0B0B0"), labels = c("On Time", "Difficulties")) +
+  labs(x = "Age Group", y = "Count", title = "Loan Repayment Status by Age Group") +
+  theme_minimal(base_size = 13) +                           
+  theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+    axis.text.y = element_text(angle = 0, hjust = 1),  # Ensure labels on y-axis are horizontal
+    legend.position = "top"  # Move the legend to the top
+  ) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 10)) +
+  guides(fill = guide_legend(title = "Repayment"))  # Add title for legend +
+
+
+```
+
+So according to the plot, the age group 18-25 does not have that many appliers like other groups, but still, repayment difficulties appear, this might be because they often face limited financial literacy, job instability, or irregular income problems, which make them do not know the risk of borrowing.
+"greater levels of financial literacy decreased one’s likelihood of taking out a student loan. Certain socio-demographic groups were also more likely to take out student loans. Concerning student loan repayment, individuals with lower financial literacy were more likely to be delinquent on their student loan"
+
+The age groups 26–35, 36–45, and 46-55 dominate in the number of on-time repayments, with 36–45 having the highest count overall, besides group 26-35 having the highest count of repayment difficulties overall. We can compare people in general between the ages of 26 and 45. This is because people between the ages of 26 and 45 are generally in an age of enthusiasm and active struggle, and generally speaking, they have reached the age of getting married and buying fixed assets, so people in this age group are more likely to make some risky choices, such as borrowing to buy a house or a car, than people in other age groups. However, such behavior also has a greater probability of causing repayment difficulties, because not all people can succeed in their careers, and some people will wrongly estimate their ability, so it will cause more repayment difficulties than other age groups.
+
+Different with two groups at the front, people around age 46-55 have a lower percentage of having difficulties with repayment, because generally, they are richer than other groups of people, although some of them still cannot finish the repayment on time, while the repayment on time count stays the same as the group 26-35, the proportion of getting difficulties in this group is decreasing.
+
+Now comes the last two groups: 56-65 and 66+, or the old people group, typically these two age groups have lost their enthusiasm for work and are beginning to enter retirement age. So for people at this stage, the proportion of people who can't pay their loans has also been much lower than in previous age groups (except for 18-25 years old). And for those older than 66, their lives are rich enough, or enough to live on, to no longer need a loan.
+
+Additionally, we want to have a peek into the relationship between repayment ability and client's financial factors. We use `income` and `credit` as our indicators for wealth. To start of, we will separate the income and credit columns based on their values. The threshold is determined appropriately so that the graph provided an equally distributed ranges. 
+
+```{r}
+# Create bins for each column
+train_bins <- train_filled %>%
+  mutate(
+    AMT_INCOME_TOTAL_BIN = cut(AMT_INCOME_TOTAL, breaks = c(0, 100000, 150000, 200000, 250000, 300000, Inf), 
+                               labels = c("0-100k", "100k-150k", "150k-200k", "200k-250k", "250k-300k", "300k+")),
+    AMT_CREDIT_BIN = cut(AMT_CREDIT, breaks = c(0, 200000, 400000, 600000, 800000, 1000000, Inf), 
+                         labels = c("0-200k", "200k-400k", "400k-600k", "600k-800k", "800k-1M", "1M+"))
+  )
+
+# Aggregate data to count TARGET values for each bin
+income_target <- train_bins %>%
+  group_by(AMT_INCOME_TOTAL_BIN, TARGET) %>%
+  summarise(Count = n(), .groups = "drop")
+
+credit_target <- train_bins %>%
+  group_by(AMT_CREDIT_BIN, TARGET) %>%
+  summarise(Count = n(), .groups = "drop")
+
+```
+
+```{r}
+# Income total
+ggplot(income_target, aes(x = AMT_INCOME_TOTAL_BIN, y = Count, fill = factor(TARGET))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("#4F81BD", "#B0B0B0"), labels = c("On Time", "Difficulties")) +
+  labs(title = "Number of Repayment by Income Range", 
+       x = "Income Range", 
+       y = "Count", 
+       fill = "TARGET") +
+  theme_minimal()
+```
+
+Based on the plot above, we see a lot of people in the income range of 0 to $250k decided to lend money the most. Those with income value higher than 250k are less likely to lend. Additionally, we noticed that the amount of difficulties fluctuates depending on the total number of lending. This suggest a comparison of proportion to further understand the differences between these groups. 
+
+```{r}
+# Credit
+ggplot(credit_target, aes(x = AMT_CREDIT_BIN, y = Count, fill = factor(TARGET))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("#4F81BD", "#B0B0B0"), labels = c("On Time", "Difficulties")) +
+  labs(title = "Number of Repayment by Credit Range", 
+       x = "Credit Range", 
+       y = "Count", 
+       fill = "TARGET") +
+  theme_minimal()
+```
+
+According to the plot, clients in the credit range of 200k to 800k and those with more than $1 million are the one who lend the most. Similar to the credit plot, the amount of difficulties fluctuates depending on the total number of lending for all credit range. This suggest a further look by comparing their proportion.    
+
+```{r}
+# Calculate proportions for each bin
+income_target_prop <- train_bins %>%
+  group_by(AMT_INCOME_TOTAL_BIN, TARGET) %>%
+  summarise(Count = n(), .groups = "drop") %>%
+  group_by(AMT_INCOME_TOTAL_BIN) %>%
+  mutate(Proportion = Count / sum(Count))
+
+credit_target_prop <- train_bins %>%
+  group_by(AMT_CREDIT_BIN, TARGET) %>%
+  summarise(Count = n(), .groups = "drop") %>%
+  group_by(AMT_CREDIT_BIN) %>%
+  mutate(Proportion = Count / sum(Count))
+```
+
+```{r}
+# Plotting proportions
+# Percentage bar chart for Income Range
+ggplot(income_target_prop, aes(fill = factor(TARGET), y = Proportion, x = AMT_INCOME_TOTAL_BIN)) + 
+  geom_bar(position = "fill", stat = "identity") +
+  scale_fill_manual(values = c("#4F81BD", "#B0B0B0"), labels = c("On Time", "Difficulties")) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  labs(title = "Proportion of repayment by Income Range",
+       x = "Income Range",
+       y = "Proportion",
+       fill = "TARGET") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Interestingly, when we plot the income range into proportion, we can observe a slight downward trend. This suggest that those with higher income are more likely to pay back the loan. Combining with the insights from the count of loans, it can be imply that people with income lower than 250k are more likely to lend out and less likely to repay the loan on time. On the other, those with income level higher than 250k are less likely to lend and responsibly repay the loan on time. 
+
+```{r}
+# Percentage bar chart for Credit Range
+ggplot(credit_target_prop, aes(fill = factor(TARGET), y = Proportion, x = AMT_CREDIT_BIN)) + 
+  geom_bar(position = "fill", stat = "identity") +
+  scale_fill_manual(values = c("#4F81BD", "#B0B0B0"), labels = c("On Time", "Difficulties")) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  labs(title = "Proportion of repayment by Credit Range",
+       x = "Credit Range",
+       y = "Proportion",
+       fill = "TARGET") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+For credit range proportion, there doesn't seems to be a specific trend in the graph. However, interestingly, when the number of repayment for group 400k-600k decrease, the proportion of difficulties repayment for that group increased. Also, those who has high credit value are more likely to repay the loan on time, aligning with what we have from income graphs' insights.
+
+# Variable Selection
+
+After filling in missing values and removing columns with too many missing data, we’re left with 54 variables. From the heatmap, we observed that some of these variables are highly correlated. To improve our model’s performance and reduce the risk of overfitting, we're using a combination of Elastic Net and Principal Component Analysis (PCA). But before diving into these techniques, we also leveraged domain knowledge to guide our feature engineering process, which helped us create new variables and remove irrelevant ones. Here’s how everything fits together:
+
+- Using Domain Knowledge for Feature Engineering
+
+Before applying any advanced techniques, we first used our understanding of the domain to create new variables that might be more meaningful or representative of the underlying patterns in the data. We also removed features that, based on our domain expertise, were unlikely to add value or could introduce noise. This helped us refine the dataset before applying Elastic Net and PCA, ensuring that we weren’t working with irrelevant or redundant features from the start.
+
+- Elastic Net: Handling Correlated Variables and Feature Selection
+
+Once we had a cleaner dataset, we turned to Elastic Net. Elastic Net is a regularization method that combines Lasso (L1 regularization) and Ridge (L2 regularization), and it’s particularly effective when we have correlated features, as is the case with our dataset. Elastic Net allows us to:
+
+Handle multicollinearity (correlated features) by selecting important features while shrinking the others.
+
+Reduce overfitting by penalizing overly complex models.
+
+Filter out irrelevant variables, ensuring the model only uses the most meaningful features.
+
+This combination of Lasso and Ridge regularization makes Elastic Net especially useful in refining the feature set and focusing on the most impactful variables.
+
+- Principal Component Analysis (PCA): Reducing Dimensionality and Multicollinearity
+
+Even after applying Elastic Net, we still have a fair number of features, which is where PCA comes in. PCA is a dimensionality reduction technique that transforms the original correlated features into uncorrelated principal components, each of which captures a portion of the variance in the data.
+
+PCA is particularly useful in this case for a few key reasons:
+
+Multicollinearity: Since many of our features are correlated, PCA helps by creating new components that are uncorrelated, resolving the issue of multicollinearity and making the model more stable.
+
+Dimensionality Reduction: By focusing on the components that explain the most variance, PCA reduces the number of features we need to work with, simplifying the model and making it more efficient.
+
+Model Efficiency: Reducing the number of features not only makes training faster but also helps in creating a model that can generalize better to new data.
+How They Work Together
+
+In summary, the combination of Elastic Net and PCA, along with the use of domain knowledge to create and refine features, helps us build a model that is more efficient, generalizable, and accurate. This process ensures that we are working with the most meaningful features and reduces the risk of overfitting, ultimately leading to better performance on real-world data.
+
+## Data Cleaning
+
+```{r}
+# Identify all FLAG_DOCUMENT_X columns
+flag_columns <- grep("^FLAG_DOCUMENT_", names(train_filled), value = TRUE)
+
+# Create a new column with the count of documents provided (sum of flags)
+train_filled$DOCUMENT_COUNT <- rowSums(train_filled[, flag_columns])
+
+# Remove the FLAG_DOCUMENT_X columns from the dataset
+train_filled <- train_filled[, !names(train_filled) %in% flag_columns]
+
+# Dropping and mutate column based on domain knowledge
+train_clean <-train_filled %>% 
+  dplyr::select(-AMT_REQ_CREDIT_BUREAU_HOUR, -AMT_REQ_CREDIT_BUREAU_DAY, -AMT_REQ_CREDIT_BUREAU_WEEK, -AMT_REQ_CREDIT_BUREAU_MON, -AMT_REQ_CREDIT_BUREAU_YEAR, -WEEKDAY_APPR_PROCESS_START, -NAME_INCOME_TYPE, -FLAG_MOBIL) %>% 
+  mutate(DAY_EMPLOYED_PERCENT = DAYS_EMPLOYED / DAYS_BIRTH) %>% 
+  mutate(AGES = DAYS_BIRTH/365)  %>% 
+  dplyr::select(-SK_ID_CURR, -DAYS_BIRTH) %>% 
+  mutate(CREDIT_INCOME_PERCENT = AMT_CREDIT / AMT_INCOME_TOTAL) %>% 
+  filter(CODE_GENDER != "XNA")
+```
+
+Here, our goal is to reduce dimensionality and improve the relevance of the features. Instead of using the binary variable for documents, we created a new column, DOCUMENT_COUNT, which represents the total count of documents provided. This could be a more meaningful feature for our model, so we dropped the original document binary variable. 
+
+Additionally, we removed variables related to the number of enquiries to the Credit Bureau at different time intervals (e.g., one hour, one day, one week, or a year before the application). Time intervals like "hour" and "day" are too close to each other and may just reflect normal client behavior, while "year" is too distant. We decided to keep only the quarter variable, as it strikes a balance between capturing meaningful action and avoiding overly short or long time frames. 
+
+We also created a new feature, DAY_EMPLOYED_PERCENT, by calculating the ratio of DAYS_EMPLOYED to DAYS_BIRTH, which gives a sense of how long the person has been employed relative to their age. This was calculated based on a reasonable assumption that someone with a higher ratio has more work experience relative to their age. 
+
+Finally, we removed irrelevant variables like SK_ID_CURR, FLAG_MOBIL (since we have mutiple other variable indicate the same thing) and DAYS_BIRTH, as we now have a new AGE variable, and filtered out the XNA category in the gender variable, which didn’t make sense in the context of the data.
+
+```{r}
+# Change the categorical column into numerical based on domain knowledge
+train_clean$NAME_EDUCATION_TYPE <- as.numeric(factor(train_clean$NAME_EDUCATION_TYPE, labels = c("Secondary", "Lower Secondary", "Incomplete Higher", "Higher Education", "Academic Degree")))
+train_clean$OCCUPATION_TYPE <- as.numeric(table(train_clean$OCCUPATION_TYPE )[train_clean$OCCUPATION_TYPE ])
+train_clean$NAME_TYPE_SUITE <- as.numeric(table(train_clean$NAME_TYPE_SUITE )[train_clean$NAME_TYPE_SUITE ])
+train_clean$NAME_HOUSING_TYPE <- as.numeric(table(train_clean$NAME_HOUSING_TYPE )[train_clean$NAME_HOUSING_TYPE ])
+train_clean$NAME_CONTRACT_TYPE <- as.numeric(table(train_clean$NAME_CONTRACT_TYPE )[train_clean$NAME_CONTRACT_TYPE])
+train_clean$ORGANIZATION_TYPE <- as.numeric(table(train_clean$ORGANIZATION_TYPE )[train_clean$ORGANIZATION_TYPE])
+train_clean$NAME_FAMILY_STATUS <- as.numeric(table(train_clean$NAME_FAMILY_STATUS )[train_clean$NAME_FAMILY_STATUS])
+```
+
+To improve the model’s performance, we transformed categorical variables into numerical ones based on domain knowledge. For instance, NAME_EDUCATION_TYPE was converted into a numeric scale representing different education levels. The levels are ordered as follows: "Secondary" (lowest), "Lower Secondary", "Incomplete Higher", "Higher Education", and "Academic Degree" (highest). This transformation reflects the increasing level of education and its potential correlation with income, creditworthiness, or other important factors.
+
+For other categorical variables such as OCCUPATION_TYPE, NAME_TYPE_SUITE, NAME_HOUSING_TYPE, NAME_CONTRACT_TYPE, ORGANIZATION_TYPE, and NAME_FAMILY_STATUS, we transformed them into numeric values based on their frequency in the dataset. This approach helps capture the importance of each category while simplifying the data. The more frequent categories are assigned higher numerical values, which can be interpreted as indicators of commonality or prevalence. By doing this, we ensure that the model can interpret these categorical variables effectively without the need for complex one-hot encoding, while still maintaining important information about their relative occurrence.
+
+```{r}
+# Do Hot-one Enconding for the remain variable
+dummy_vars <- dummyVars(~ ., data = train_clean, fullRank = TRUE)
+train_before <- data.frame(predict(dummy_vars, train_clean))
+```
+
+For the remaining categorical variables, we applied One-Hot Encoding to convert them into a format that can be understood by the machine learning model. One-hot encoding creates a binary (0 or 1) column for each category in a variable, where each new column represents the presence or absence of a specific category. This is particularly useful for categorical variables that do not have an inherent order or ranking.
+
+We used the dummyVars function from the caret package to generate these binary variables, specifying the fullRank = TRUE argument to ensure we avoid multicollinearity (by excluding one category per variable). After applying one-hot encoding, we created a new dataset called train_before, which includes these expanded binary columns, making the dataset ready for model selection. This transformation ensures that categorical variables are properly represented, allowing the model to learn from the individual categories without introducing any implicit order or relationship.
+
+## Variable Correlation
+
+After we fininsh our exploration on datasets, we realize that we have too much variables in our datasets so here comes up to explain how we choose the variables in the dataset to do our following model buildings and training.
+
+First of all, we decide to use the correlation matrix to find what variables in our dataset can relate with each other:
+
+```{r}
+
+# Separate the numerical columns
+numerical_data <- train_before %>%
+  dplyr::select_if(is.numeric)  # Selects only numerical columns
+
+# Calculate the initial correlation matrix
+corr_matrix <- cor(numerical_data)
+
+# Set a high correlation threshold
+threshold <- 0.8
+
+# Create a copy of the correlation matrix, setting correlations below the threshold to NA
+corr_matrix[abs(corr_matrix) < threshold] <- NA  # Set correlations below the threshold to NA
+
+# Function to check if all non-NA values are 1
+all_one_or_na <- function(x) all(x[!is.na(x)] == 1)
+
+# Remove columns and rows that contain only 1 and NA
+corr_matrix <- corr_matrix[, !apply(corr_matrix, 2, all_one_or_na)]
+corr_matrix <- corr_matrix[!apply(corr_matrix, 1, all_one_or_na), ]
+
+# Identify variables with at least one significant correlation
+significant_vars <- apply(!is.na(corr_matrix), 1, any)
+
+# Filter out variables without significant correlations
+filtered_corr_matrix <- corr_matrix[significant_vars, significant_vars]
+
+# Convert the filtered correlation matrix into long format
+cor_long <- melt(filtered_corr_matrix, na.rm = TRUE)
+
+# Plot the heatmap
+ggplot(data = cor_long, aes(Var1, Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "#084594", high = "#B22222", mid = "white", 
+                       limit = c(-1, 1), midpoint = 0, 
+                       name = "Correlation") +
+  labs(title = paste("Filtered Correlation Matrix (Corr >= ", threshold, ")", sep = ""), 
+       x = "", 
+       y = "") +
+  theme_minimal(base_size = 13) +
+  theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 7, vjust = 1),
+        axis.text.y = element_text(hjust = 1, size = 7, vjust = 1))
+
+```
+
+So, after a list of comparations, we decide to set an 0.8 threshold, since either higher or lower than this point, our matrix will excluding many relationships that may still be relevant or will include weaker correlations, making it harder to identify the strongest and most meaningful variable relationships, 0.8 comes to be the best we can set.
+
+And according to the plot, here are some example variables that we can focus on:
+
+AMT_GOODS_PRICE and AMT_CREDIT: These two variables show very high correlation, suggesting that the amount of credit is closely tied to the price of goods.
+
+REGION_RATING_CLIENT and REGION_RATING_CLIENT_W_CITY: These are strongly correlated, reflecting how regional client ratings and those weighted by city are closely linked.
+
+But although we have many high correlation variables, there are still some variables who do have high correlation but we do not need, for example:
+
+OBS_30_CNT_SOCIAL_CIRCLE and OBS_60_CNT_SOCIAL_CIRCLE: These two are highly correlated just because they both showing the same thing, but with different threshold of days past due (30 days and 60 days). So this pair will be pass.
+
+## Elastic Net
+
+Next, we will use Elastic Net for variable selection
+
+```{r}
+# Change the TARGET variable into factor for Elastic Net
+train_before$TARGET <- factor(train_before$TARGET, levels = c(0, 1))
+
+# Ensure that levels of TARGET are valid R variable names
+levels(train_before$TARGET) <- make.names(levels(train_before$TARGET))
+
+```
+
+We would have to make our TARGET variable into factor data type and make it as a valid name for the model to select.
+
+```{r}
+ # Parallel Processing for faster training
+ #cl <- makeCluster(detectCores()-1)
+ #registerDoParallel()
+ 
+  # Define custom Precision function with X0 as positive
+   precisionSummary <- function(data, lev = NULL, model = NULL) {
+     data$obs <- factor(data$obs)
+     data$pred <- factor(data$pred)
+     precision <- posPredValue(data$obs, data$pred, positive = "X1")
+     out <- c(Precision = precision)
+     return(out)
+   }
+   
+ # Define train control for cross validation and scale the TARGET variable
+   # train_control <- trainControl(
+   #   method = "cv",                  # Cross-validation
+   #   number = 10,                     # 5-fold CV
+   #   classProbs = TRUE,              # Enable class probabilities
+   #   summaryFunction = precisionSummary,  # Use custom Precision function
+   #   sampling = "down"
+   #   )
+ 
+  # Elastic Net model training
+  #  elastic_net_model <- train(
+  #    TARGET ~ .,                    # Formula for predictors and outcome
+  #    data = train_before,                    # Dataset
+  #    method = "glmnet",              # Elastic Net
+  #    metric = "Precision",           # Optimize for Precision
+  #    trControl = train_control,      # Training control
+  #    tuneGrid = expand.grid(         # Tuning grid for alpha and lambda
+  #      alpha = seq(0.1, 0.5, by = 0.1),
+  #      lambda = seq(0.01, 0.05, by = 0.01)),
+  #    preProcess = c("center", "scale"))
+  # 
+  # stopCluster(cl)
+  # registerDoSEQ()
+ 
+# Save the model
+# saveRDS(elastic_net_model, "elastic.rds")
+
+#Read the model
+elastic_net_model <- readRDS("elastic.rds")
+
+# Print model results
+print(elastic_net_model)
+```
+
+Since our dataset is large which could take us a long time to run, we decide to save the model result into file, and print it.
+
+The Elastic Net model was was evaluated using 10-fold cross-validation with down-sampling to address class imbalance. Cross-validation is used to assess the model’s performance by training and testing it on different subsets of the data, helping to ensure that the model generalizes well to unseen data and reduces the risk of overfitting. A 10-fold cross-validation was chosen for reliable performance estimation, which introduce more randomness into the model. The grid search tested various combinations of alpha (regularization type) and lambda (regularization strength) parameters, with a small range of values (from 0.1 to 0.5 for alpha and from 0.01 to 0.05 for lambda). This narrow range was selected to keep the model training efficient, avoiding excessive computational time and complexity. The best-performing model, based on precision, was achieved with alpha = 0.1 and lambda = 0.01, which yielded the highest precision of 0.6645548.
+
+While this combination was optimal within the tested parameters, one limitation of this approach is that the relatively small range of alpha and lambda values may have excluded better-performing configurations outside the tested grid. This could potentially affect the stability and reliability of the performance estimate.
+
+```{r}
+# Extract coefficients of the best model
+best_model <- elastic_net_model$finalModel
+best_lambda <- elastic_net_model$bestTune$lambda
+selected_features <- coef(best_model, s = best_lambda)
+
+coefficients <- as.matrix(selected_features)
+
+# Identify non-zero coefficients (i.e., variables retained in the model)
+non_zero_coefficients <- coefficients[coefficients != 0, , drop = FALSE]
+
+print(non_zero_coefficients)
+```
+
+This is our significant variable after Elastic Net. Since after our selection, there still could be correlation in our data, we would do the heatmap of correlation variable one more time too address this problem.
+
+```{r}
+# Convert into matrix form for significant variables 
+non_zero_coefficients <- as.matrix(non_zero_coefficients)
+
+selected_features <- colnames(train_before)[which(non_zero_coefficients[-1,] != 0)]
+
+# Subset the original dataset to include only final features for PCA
+final_filtered_data <- train_before %>% 
+  dplyr::select(selected_features)
+
+x <- final_filtered_data %>% 
+  dplyr::select(-TARGET)
+
+# Calculate the initial correlation matrix
+corr_matrix <- cor(x)
+
+# Set a high correlation threshold
+threshold <- 0.8
+
+# Create a copy of the correlation matrix, setting correlations below the threshold to NA
+corr_matrix[abs(corr_matrix) < threshold] <- NA  # Set correlations below the threshold to NA
+
+# Function to check if all non-NA values are 1
+all_one_or_na <- function(x) all(x[!is.na(x)] == 1)
+
+# Remove columns and rows that contain only 1 and NA
+corr_matrix <- corr_matrix[, !apply(corr_matrix, 2, all_one_or_na)]
+corr_matrix <- corr_matrix[!apply(corr_matrix, 1, all_one_or_na), ]
+
+# Identify variables with at least one significant correlation
+significant_vars <- apply(!is.na(corr_matrix), 1, any)
+
+# Filter out variables without significant correlations
+filtered_corr_matrix <- corr_matrix[significant_vars, significant_vars]
+
+# Convert the filtered correlation matrix into long format
+cor_long <- melt(filtered_corr_matrix, na.rm = TRUE)
+
+# Plot the heatmap
+ggplot(data = cor_long, aes(Var1, Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "#084594", high = "#B22222", mid = "white", 
+                       limit = c(-1, 1), midpoint = 0, 
+                       name = "Correlation") +
+  labs(title = paste("Filtered Correlation Matrix (Corr >= ", threshold, ")", sep = ""), 
+       x = "", 
+       y = "") +
+  theme_minimal(base_size = 13) +
+  theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 7, vjust = 1),
+        axis.text.y = element_text(hjust = 1, size = 7, vjust = 1))
+```
+
+From the heatmap, we observed that certain variables, such as AMT_CREDIT and AMT_GOODS_PRICE, or DAYS_EMPLOYED and FLAG_EMP_PHONE, show high correlation. Since the importance of these variables needs to be evaluated in the context of our model, we applied domain knowledge to filter out the highly correlated variables before performing PCA. This ensures that we retain only the most relevant features and prevent redundancy, allowing PCA to work more effectively in reducing dimensionality and improving model performance..
+
+## Domain Kowledge
+
+```{r}
+# Remove correlated variable
+final_filtered_data <- final_filtered_data %>% 
+  dplyr::select(-CNT_CHILDREN, -FLAG_EMP_PHONE, -REGION_RATING_CLIENT)
+
+# Filter x variable
+final_filtered_data_x <- final_filtered_data[, -which(names(final_filtered_data) == "TARGET")]
+```
+
+Since the number of children is already represented in the number of family members, we don’t need to retain both features. Additionally, if a client has a job, it is highly probable they would also have an employer phone number, and we observed that the region rating for clients is quite similar, so these variables can be removed as well. After filtering out these redundant variables, we will create a new dataset excluding the TARGET variable, which will then be used for PCA to reduce dimensionality and improve model performance.
+
+After selecting the most impactful variables and delete uncessary variables, we proceeded with Principal Component Analysis (PCA) to reduce dimensionality and mitigate multicollinearity. PCA helps by combining correlated features into uncorrelated principal components, allowing the model to focus on the most important underlying patterns. This step aims to enhance the efficiency of model training and prevent overfitting, as it reduces the risk of including redundant features that may not add significant predictive power.
+
+## Principal Component Analysis
+
+```{r}
+# Apply PCA to the standardized data
+pca_result <- prcomp(final_filtered_data_x, center = TRUE, scale. = TRUE)
+
+```
+
+First, we will apply PCA to our data. Before doing so, it is essential to center and scale the data to ensure that each feature contributes equally to the analysis. Centering subtracts the mean of each variable, while scaling normalizes the variables to have unit variance. This step is crucial because PCA is sensitive to the scale of the data, and without it, variables with larger scales could disproportionately influence the results.
+
+```{r}
+# Summary of PCA results
+summary(pca_result)
+```
+
+The PCA results indicate the importance of each principal component in explaining the variance in the data. The first few components capture the majority of the variance, with PC1 explaining 9.46% of the variance alone, and the first three components together accounting for 23.55% of the total variance. By PC25, the cumulative proportion of variance reaches 89.9%, meaning that the first 25 components explain most of the variability in the data. Beyond this, the components explain diminishing amounts of variance, with PC35 contributing only 0.034%. This suggests that dimensionality can be effectively reduced by focusing on the first 25 components, retaining significant information while reducing complexity and improving model efficiency.
+
+We would make a plot too check our findings and proceed with our data after PCA
+
+```{r}
+# Get explained variance
+explained_variance <- summary(pca_result)$importance[2, ]
+
+# Cumulative explained variance
+cumulative_variance <- cumsum(explained_variance)
+
+# Plot the cumulative variance
+plot(cumulative_variance, type = "b", xlab = "Number of Components", ylab = "Cumulative Explained Variance",
+     main = "Cumulative Explained Variance by Principal Components")
+```
+
+The plot visualizes the cumulative explained variance, with the number of components on the x-axis and the cumulative variance on the y-axis. The resulting plot shows that the first 25 components explain approximately 90% of the variability in the data. As more components are added, the cumulative variance increases at a slower rate, indicating diminishing returns in capturing additional variance. Therefore, we would choose to retain the first 25 components for further analysis, as they capture most of the important information, while reducing dimensionality and simplifying the model without losing significant explanatory power.
+
+```{r}
+# Select the PC for our data
+select_train <- pca_result$x[, 1:25]
+
+# Combine the TARGET variable and our principle component
+cleaned_matrix <- bind_cols(TARGET = as.factor(final_filtered_data$TARGET), select_train)
+
+# Transform it to DF for trainning
+pca_transformed_df <- as.data.frame(cleaned_matrix)
+```
+
+We will create a new dataset using the selected principal components from the PCA transformation and proceed to train our model using this reduced-dimensional data.
+
+# Methodology
+
+Next, we will train our model using three different methods: Logistic Regression (LR), Random Forest (RF), and XGBoost (XGB). 
+
+- Logistic Regression will serve as a baseline model, as it is particularly effective for capturing linear relationships between the predictors and the target variable. This model will help us understand the basic linear patterns in the data.
+
+- Random Forest, a non-linear model, will allow us to capture more complex relationships and interactions between features, which may not be apparent in linear models. XGBoost, a powerful gradient boosting algorithm, will help us model complex, non-linear relationships through an ensemble of decision trees, focusing on minimizing errors through iterative refinement. 
+
+- XGBoost has been shown to perform well in many predictive tasks due to its efficiency, regularization, and ability to handle unstructured data.  As demonstrated by Gu et al. (2024) in their study on credit risk assessment for small and micro enterprises, XGBoost outperforms other machine learning models in terms of both accuracy and stability, making it a strong choice for our analysis.
+
+We will train Logistic Regression (LR), Random Forest (RF), and XGBoost (XGB) models using the dataset after applying Principal Component Analysis (PCA). PCA helps reduce the dimensionality of the data, improve model efficiency, and enhance generalization by removing multicollinearity and noise. By focusing on the principal components, which capture the most significant variance in the data, we aim to assess how well the reduced feature set performs in terms of predicting the target variable. This approach will also allow us to evaluate how dimensionality reduction affects model interpretability and how the transformation impacts the ability of the models to generalize to new, unseen data. Training on PCA-transformed data will provide insights into how each model performs when trained on a simplified, noise-reduced version of the original dataset
+
+We will use Precision as our evaluation metric, as false positives—predicting repayment when the loan won’t be repaid—are particularly costly in this context. Our goal in this dataset is to investigate whether an applicant’s social demographics and wealth factors are significant predictors of whether they will repay a loan. By focusing on Precision, we aim to minimize the impact of false positives and ensure that the model's predictions are as reliable as possible.
+
+## Preprocess Test Data
+
+First, we will preprocess the test data to ensure it is in the appropriate format and ready for model evaluation
+
+```{r}
+test_filled <- test_data %>% 
+  dplyr::select(-all_of(columns_to_drop)) %>% 
+    mutate(
+    EXT_SOURCE_3 = ifelse(is.na(EXT_SOURCE_3), median(EXT_SOURCE_3, na.rm = TRUE), EXT_SOURCE_3),
+    AMT_REQ_CREDIT_BUREAU_HOUR = ifelse(is.na(AMT_REQ_CREDIT_BUREAU_HOUR), 0, AMT_REQ_CREDIT_BUREAU_HOUR),
+    AMT_REQ_CREDIT_BUREAU_DAY = ifelse(is.na(AMT_REQ_CREDIT_BUREAU_DAY), 0, AMT_REQ_CREDIT_BUREAU_DAY),
+    AMT_REQ_CREDIT_BUREAU_WEEK = ifelse(is.na(AMT_REQ_CREDIT_BUREAU_WEEK), 0, AMT_REQ_CREDIT_BUREAU_WEEK),
+    AMT_REQ_CREDIT_BUREAU_MON = ifelse(is.na(AMT_REQ_CREDIT_BUREAU_MON), median(AMT_REQ_CREDIT_BUREAU_MON, na.rm = TRUE), AMT_REQ_CREDIT_BUREAU_MON),
+    AMT_REQ_CREDIT_BUREAU_QRT = ifelse(is.na(AMT_REQ_CREDIT_BUREAU_QRT), median(AMT_REQ_CREDIT_BUREAU_QRT, na.rm = TRUE), AMT_REQ_CREDIT_BUREAU_QRT),
+    AMT_REQ_CREDIT_BUREAU_YEAR = ifelse(is.na(AMT_REQ_CREDIT_BUREAU_YEAR), median(AMT_REQ_CREDIT_BUREAU_YEAR, na.rm = TRUE), AMT_REQ_CREDIT_BUREAU_YEAR),
+    OBS_30_CNT_SOCIAL_CIRCLE = ifelse(is.na(OBS_30_CNT_SOCIAL_CIRCLE), median(OBS_30_CNT_SOCIAL_CIRCLE, na.rm = TRUE), OBS_30_CNT_SOCIAL_CIRCLE),
+    DEF_30_CNT_SOCIAL_CIRCLE = ifelse(is.na(DEF_30_CNT_SOCIAL_CIRCLE), median(DEF_30_CNT_SOCIAL_CIRCLE, na.rm = TRUE), DEF_30_CNT_SOCIAL_CIRCLE),
+    OBS_60_CNT_SOCIAL_CIRCLE = ifelse(is.na(OBS_60_CNT_SOCIAL_CIRCLE), median(OBS_60_CNT_SOCIAL_CIRCLE, na.rm = TRUE), OBS_60_CNT_SOCIAL_CIRCLE),
+    DEF_60_CNT_SOCIAL_CIRCLE = ifelse(is.na(DEF_60_CNT_SOCIAL_CIRCLE), median(DEF_60_CNT_SOCIAL_CIRCLE, na.rm = TRUE), DEF_60_CNT_SOCIAL_CIRCLE),
+    EXT_SOURCE_2 = ifelse(is.na(EXT_SOURCE_2), median(EXT_SOURCE_2, na.rm = TRUE), EXT_SOURCE_2),
+    AMT_GOODS_PRICE = ifelse(is.na(AMT_GOODS_PRICE), median(AMT_GOODS_PRICE, na.rm = TRUE), AMT_GOODS_PRICE),
+    AMT_ANNUITY = ifelse(is.na(AMT_ANNUITY), median(AMT_ANNUITY, na.rm = TRUE), AMT_ANNUITY),
+    CNT_FAM_MEMBERS = ifelse(is.na(CNT_FAM_MEMBERS), median(CNT_FAM_MEMBERS, na.rm = TRUE), CNT_FAM_MEMBERS),
+    DAYS_LAST_PHONE_CHANGE = ifelse(is.na(DAYS_LAST_PHONE_CHANGE), median(DAYS_LAST_PHONE_CHANGE, na.rm = TRUE), DAYS_LAST_PHONE_CHANGE)
+  ) %>% 
+  mutate(OCCUPATION_TYPE = ifelse(is.na(OCCUPATION_TYPE), "Unknown", OCCUPATION_TYPE)) %>% 
+  mutate(NAME_TYPE_SUITE = ifelse(is.na(NAME_TYPE_SUITE), "Unaccompanied", NAME_TYPE_SUITE)) %>% 
+  mutate(across(c(DAYS_BIRTH, DAYS_LAST_PHONE_CHANGE, DAYS_EMPLOYED, DAYS_ID_PUBLISH, DAYS_REGISTRATION), abs))
+
+# Reorder and relabel the education categories
+test_filled$NAME_EDUCATION_TYPE <- factor(
+  test_filled$NAME_EDUCATION_TYPE,
+  levels = c("Secondary / secondary special", "Lower secondary", "Incomplete higher", 
+             "Higher education", "Academic degree"),
+  labels = c("Secondary", "Lower Secondary", "Incomplete Higher", "Higher Education", "Academic Degree")
+)
+
+# Create a new column with the count of documents provided (sum of flags)
+test_filled$DOCUMENT_COUNT <- rowSums(test_filled[, flag_columns])
+
+# Remove the FLAG_DOCUMENT_X columns from the dataset
+test_filled <- test_filled[, !names(test_filled) %in% flag_columns]
+
+# Dropping and mutate column based on domain knowledge
+test_clean <-test_filled %>% 
+  dplyr::select(-AMT_REQ_CREDIT_BUREAU_HOUR, -AMT_REQ_CREDIT_BUREAU_DAY, -AMT_REQ_CREDIT_BUREAU_WEEK, -AMT_REQ_CREDIT_BUREAU_MON, -AMT_REQ_CREDIT_BUREAU_YEAR, -WEEKDAY_APPR_PROCESS_START, -NAME_INCOME_TYPE, -FLAG_MOBIL) %>% 
+  mutate(DAY_EMPLOYED_PERCENT = DAYS_EMPLOYED / DAYS_BIRTH) %>% 
+  mutate(AGES = DAYS_BIRTH/365)  %>% 
+  dplyr::select(-SK_ID_CURR, -DAYS_BIRTH) %>% 
+  mutate(CREDIT_INCOME_PERCENT = AMT_CREDIT / AMT_INCOME_TOTAL) %>% 
+  filter(CODE_GENDER != "XNA")
+
+# Change the categorical column into numerical based on domain knowledge
+test_clean$NAME_EDUCATION_TYPE <- as.numeric(factor(test_clean$NAME_EDUCATION_TYPE, labels = c("Secondary", "Lower Secondary", "Incomplete Higher", "Higher Education", "Academic Degree")))
+test_clean$OCCUPATION_TYPE <- as.numeric(table(test_clean$OCCUPATION_TYPE )[test_clean$OCCUPATION_TYPE ])
+test_clean$NAME_TYPE_SUITE <- as.numeric(table(test_clean$NAME_TYPE_SUITE )[test_clean$NAME_TYPE_SUITE ])
+test_clean$NAME_HOUSING_TYPE <- as.numeric(table(test_clean$NAME_HOUSING_TYPE )[test_clean$NAME_HOUSING_TYPE ])
+test_clean$NAME_CONTRACT_TYPE <- as.numeric(table(test_clean$NAME_CONTRACT_TYPE )[test_clean$NAME_CONTRACT_TYPE])
+test_clean$ORGANIZATION_TYPE <- as.numeric(table(test_clean$ORGANIZATION_TYPE )[test_clean$ORGANIZATION_TYPE])
+test_clean$NAME_FAMILY_STATUS <- as.numeric(table(test_clean$NAME_FAMILY_STATUS )[test_clean$NAME_FAMILY_STATUS])
+
+# Do Hot-one Enconding for the remain variable
+dummy_vars <- dummyVars(~ ., data = test_clean, fullRank = TRUE)
+test_before <- data.frame(predict(dummy_vars, test_clean))
+
+# Change the TARGET variable into factor for Elastic Net
+test_before$TARGET <- factor(test_before$TARGET, levels = c(0, 1))
+
+# Ensure that levels of TARGET are valid R variable names
+levels(test_before$TARGET) <- make.names(levels(test_before$TARGET))
+
+# Subset the original dataset to include only final features for PCA
+final_filtered_test <- test_before %>% 
+  dplyr::select(selected_features)
+
+# Remove correlated variable
+final_filtered_test <- final_filtered_test %>% 
+  dplyr::select(-CNT_CHILDREN, -FLAG_EMP_PHONE, -REGION_RATING_CLIENT) 
+
+final_filtered_test <- na.omit(final_filtered_test)  # Removes rows with NA values
+
+# Filter 
+final_filtered_test_x <- final_filtered_test[, -which(names(final_filtered_test) == "TARGET")]
+
+# Apply PCA to the standardized data
+pca_result_test <- prcomp(final_filtered_test_x, center = TRUE, scale. = TRUE)
+
+# Select the PC for our data
+select_train_test <- pca_result_test$x[, 1:25]
+
+# Combine the TARGET variable and our principle component
+cleaned_matrix_test <- bind_cols(select_train_test, TARGET = as.factor(final_filtered_test$TARGET))
+
+# Transform it to DF for trainning
+pca_transformed_test <- as.data.frame(cleaned_matrix_test)
+
+# Getting independant and dependant variable in test data
+x_test <- pca_transformed_test %>% 
+  dplyr::select(-TARGET)
+
+y_test <- pca_transformed_test$TARGET
+```
+  
+## Logistic Regression
+
+Next, we will train our Logistic Regression model using the dataset transformed by PCA. This will allow us to leverage the reduced dimensionality, improving model efficiency and generalization by eliminating multicollinearity and noise.
+
+```{r}
+# Parallel Processing for faster training
+cl <- makeCluster(detectCores()-1)
+registerDoParallel()
+
+# Define train control with custom Precision function
+train_control1 <- trainControl(
+  method = "cv",                   # Cross-validation
+  number = 10,                      # Number of folds for CV
+  classProbs = TRUE,                # To compute probabilities
+  summaryFunction = precisionSummary, # Use custom Precision function
+  sampling = "down",
+  allowParallel = TRUE
+  )
+
+
+# Train logistic regression model
+logistic_model_pca <- train(
+  TARGET ~ .,    # Formula (target ~ predictors)
+  data = pca_transformed_df,                # Training data
+  method = "glm",                   # Generalized Linear Model
+  family = "binomial",              # Logistic regression
+  trControl = train_control1,        # Cross-validation settings
+  metric = "Precision",
+  preProcess = c("center", "scale")
+)
+
+stopCluster(cl)
+registerDoSEQ()
+
+
+# View model results
+print(logistic_model_pca)
+```
+We would use Parralel Processing for faster training time. The predictors were pre-processed by centering and scaling, ensuring that all variables were on the same scale. To assess the model's performance, a 10-fold cross-validation technique was employed, providing a more reliable measure of its generalization ability. Additionally, to address any class imbalance, down-sampling was applied before pre-processing to ensure balanced representation of both classes during training. 
+
+The model's resampling results yielded a Precision of 0.6545, indicating that approximately 65.45% of the model's positive predictions ('X1') were correct, which is particularly valuable in contexts where minimizing false positives is critical.
+
+
+We will evaluate the model's performance on the test set and calculate its precision, allowing us to compare its effectiveness with other models. This will provide insight into how well the model generalizes to unseen data, specifically focusing on its ability to correctly identify positive cases while minimizing false positives.
+
+```{r}
+# Make predictions on the test set
+lr_predictions <- predict(logistic_model_pca, newdata = x_test)
+
+# Assuming the true labels are stored in test_target
+lr_conf_matrix <- confusionMatrix(lr_predictions, y_test)
+
+lr_precision <- lr_conf_matrix$byClass["Specificity"]
+```
+
+## Random Forest 
+
+Next, we will train our model using Random Forest, a powerful ensemble learning technique that combines multiple decision trees to improve prediction accuracy and robustness. Here, we have already train our model on computer with better CPU and RAM for faster accuracy, the we save our model to a file for quick access.
+
+```{r}
+#   cl <- makeCluster(detectCores()-1)
+#   registerDoParallel()
+#   
+# Define train control with custom Precision function
+   # train_control2 <- trainControl(
+   #   method = "cv",                   # Cross-validation
+   #   number = 5,                      # Number of folds for CV
+   #   summaryFunction = precisionSummary, # Use custom Precision function
+   #   sampling = "down",
+   #   verboseIter = TRUE,
+   #   allowParallel = TRUE
+   #   )
+   # 
+   # tuneGrid <- expand.grid(
+   #   mtry = seq(2,10, by = 2)
+   # )
+   # 
+   # # Train the Random Forest model
+   # rf_model_pca <- train(
+   #   TARGET ~ .,                   # Formula (target ~ predictors)
+   #   data = pca_transformed_df,              # Training data
+   #   method = "rf",                 # Random Forest method
+   #   trControl = train_control2,     # Cross-validation control
+   #   metric = "Precision",              # Optimize for ROC (AUC)
+   #   tuneGrid = tuneGrid,
+   #   ntree = 100,
+   #   preProcess = c("center", "scale")# Tune a few hyperparameters (adjust if needed)
+   # )
+   # 
+   # stopCluster(cl)
+   # registerDoSEQ()
+
+#saveRDS(rf_model_pca, "rf_model_pca.rds")
+rf_model_pca <- readRDS("rf_model_pca.rds") 
+# Print the model results
+print(rf_model_pca)
+```
+
+We would use Parralel Processing for faster training time. The data underwent pre-processing, which included centering and scaling of all predictors, followed by a 5-fold cross-validation for resampling since it can balance the efficiency and accuracy of the model. Additional down-sampling was applied prior to pre-processing to address class imbalance. The model was tuned using the parameter mtry, which determines the number of variables randomly selected at each split in the trees. The resampling results showed that the precision values varied with different values of mtry: 0.64499 for mtry = 2, 0.64238 for mtry = 4, 0.64836 for mtry = 6, 0.64736 for mtry = 8, and 0.64344 for mtry = 10. Based on the highest precision value of 0.64836, the optimal mtry value of 6 was selected for the final model.
+
+```{r}
+# Make predictions on the test set
+rf_predictions <- predict(rf_model_pca, newdata = x_test)
+
+# Assuming the true labels are stored in test_target
+rf_conf_matrix <- confusionMatrix(rf_predictions, y_test)
+
+rf_precision <- rf_conf_matrix$byClass["Specificity"]
+```
+
+## Extreme Gradient Boosting
+
+Finally, we will train our model using XGBoost, a powerful and efficient gradient boosting algorithm known for its high predictive performance and ability to handle complex, non-linear relationships in the data.  Here, we have already train our model on computer with better CPU and RAM for faster accuracy, the we save our model to a file for quick access.
+
+```{r}
+# # Set up parallel processing
+# cl <- makeCluster(detectCores() - 1) # Use one less core to avoid overload
+# registerDoParallel(cl)
+# 
+# # Set up train control with custom precision function
+# train_control3 <- trainControl(
+#   method = "cv",                         # Cross-validation
+#   number = 5,                            # 5-fold cross-validation
+#   summaryFunction = precisionSummary,     # Use custom precision function
+#   sampling = "down",                     # Down-sample the majority class to balance classes
+#   allowParallel = TRUE,                    # Enable parallelization
+# )
+# 
+# # Hyperparameter grid for tuning XGBoost
+# tuneGrid <- expand.grid(
+#   nrounds = 50,                     # Number of boosting rounds (trees)
+#   max_depth = c(3, 6),                      # Maximum depth of trees
+#   eta = c(0.1, 0.3),                        # Learning rate
+#   gamma = c(0, 0.1),                        # Minimum loss reduction required to make a further partition
+#   colsample_bytree = c(0.6, 0.8),           # Fraction of features used for each tree
+#   min_child_weight = c(1, 5),                # Minimum sum of instance weight (hessian) needed in a child
+#   subsample = c(0.7, 0.8)                   # Fraction of samples used for training each tree
+# )
+# 
+# # Train the XGBoost model using caret
+# xgb_model <- train(
+#   TARGET ~ .,                   # Formula (TARGET as the target variable)
+#   data = pca_transformed_df,     # Your PCA-transformed data frame
+#   method = "xgbTree",            # Specify XGBoost model (tree-based)
+#   trControl = train_control3,    # Cross-validation control with custom precision function
+#   tuneGrid = tuneGrid,           # Hyperparameter tuning grid
+#   metric = "Precision",          # Optimize for Precision
+#   preProcess = c("center", "scale")  # Preprocess data: standardize features
+# )
+# 
+# # Stop the parallel cluster
+# stopCluster(cl)
+#registerDoSEQ()  # Disable parallelism for further operations
+
+#saveRDS(xgb_model, "xgb_model_pca.rds")
+xgb_model_pca <- readRDS("xgb_model_pca.rds") 
+# Print the model results
+print(xgb_model_pca)
+```
+
+The model underwent pre-processing, including centering and scaling of all features, followed by 5-fold cross-validation and down-sampling to handle class imbalance. Various hyperparameters, including learning rate (eta), maximum tree depth (max_depth), minimum child weight, and others, were tuned to optimize performance. However, due to the computationally expensive nature of XGBoost, we opted for a more limited hyperparameter search to reduce training time. The final model was selected using a precision metric, with the best configuration being eta = 0.1, max_depth = 3, gamma = 0, colsample_bytree = 0.6, min_child_weight = 5, and subsample = 0.7. While more extensive fine-tuning could potentially improve performance further, the decision to limit the search was based on balancing model accuracy and computational efficiency. The selected parameters provided a good trade-off, ensuring the model was trained within a reasonable timeframe while still achieving a precision score of 0.657.
+
+```{r}
+# Make predictions on the test set
+xgb_predictions <- predict(xgb_model_pca, newdata = x_test)
+
+# Assuming the true labels are stored in test_target
+xgb_conf_matrix <- confusionMatrix(xgb_predictions, y_test)
+
+xgb_precision <- xgb_conf_matrix$byClass["Specificity"]
+```
+
+
+# Main Findings 
+
+## Comparing the Model
+
+```{r}
+# Create a data frame with the model names and their corresponding precision
+precision_table <- data.frame(
+  Model = c("Random Forest (RF)", "Extreme Gradient Boosting (XGB)", "Logistic Regression (LR)"),
+  Precision = c(rf_precision, xgb_precision, lr_precision)
+)
+
+# Order the data frame by decreasing precision
+precision_table <- precision_table[order(-precision_table$Precision), ]
+
+# Print the table using knitr::kable
+kable(precision_table, caption = "Model Precision")
+```
+
+The table presents the Precision of three models, listed in decreasing order:
+
+Logistic Regression (LR) achieved the highest Precision at 0.4676. This means it was the most reliable in correctly predicting repayment cases (true positives), minimizing false positives the most effectively among the models tested.
+
+eXtreme Gradient Boosting (XGB) followed with a Precision of 0.4556, slightly lower than Logistic Regression. While it was still good at correctly identifying true positives, it did so at a slightly higher rate of false positives compared to LR.
+
+Random Forest (RF) had the lowest Precision at 0.4417, indicating it was the least effective at minimizing false positives when predicting repayment.
+
+Interestingly, the results contradict our initial expectations. Given the reputation of XGBoost (XGB) as a powerful model for handling complex relationships, we anticipated it would perform better in terms of Precision. However, Logistic Regression (LR) outperformed XGBoost (XGB) in this case, highlighting that even simpler models can sometimes deliver better results, especially when the dataset is relatively straightforward or when the cost of false positives is a critical consideration.
+
+## Principle Component
+
+We will first make a table of principle components in our model, since there are 25 PCs, we will only show the first 12 PCs here.
+
+```{r}
+# Get the loadings (rotation matrix)
+loadings_matrix <- pca_result$rotation
+
+# Select the first 12 principal components
+selected_loadings <- loadings_matrix[, 1:12]
+
+# Create a cleaner table display with kable
+kable(selected_loadings, 
+      caption = "Loadings for the First 12 Principal Components (PCs)", 
+      digits = 3,  # Format numeric values to 3 decimal places
+      col.names = paste("PC", 1:12))  # Provide descriptive column names
+
+```
+
+The provided table offers valuable insights into the relationships between features and principal components (PCs) derived from a Principal Component Analysis (PCA). By examining the correlation between various features (such as `NAME_CONTRACT_TYPE`, `CODE_GENDERM`, `AMT_INCOME_TOTAL`, etc.) and the PCs, we can identify which variables contribute significantly to the variance captured by each component. For instance, variables like `AMT_CREDIT` and `AMT_GOODS_PRICE` show strong positive correlations with PC1, indicating their importance in influencing the first principal component. In contrast, variables such as `FLAG_OWN_CARY` and `FLAG_OWN_REALTYY` are more correlated with different PCs. 
+
+```{r}
+summary(logistic_model_pca)
+```
+
+The regression output shows the relationship between the principal components (PCs) and the response variable. Several PCs have statistically significant coefficients, indicating their strong influence on the model. For example, PC2, PC3, PC4, and PC12 have very low p-values (less than 0.001), suggesting that these principal components are highly significant predictors. These PCs likely correspond to the most influential features in the data, as indicated by their strong correlations with the response variable.
+
+PC1, PC4, PC10, and PC7 also show significant coefficients (p-values < 0.01) with moderate effect sizes, meaning they play an important role in the model. For example, PC2 has a large negative coefficient (-0.369), indicating a negative relationship with the response variable, while PC4 has a positive coefficient (0.253), suggesting a positive impact.
+
+On the other hand, PCs like PC17, PC19, and PC1 have higher p-values (greater than 0.1), suggesting they do not significantly influence the response variable in this model.
+
+The Intercept is not significant (p-value = 0.43), meaning the baseline model without any predictor does not provide strong predictive power. The model's overall fit is indicated by a deviance of 48490, down from a null deviance of 55138, suggesting that the principal components contribute significantly to reducing the residual deviance and explaining the variance in the response variable.
+
+In summary, several principal components play a critical role in explaining the response variable, with PC2, PC3, PC4, and PC12 showing the most notable influence based on their significant coefficients and low p-values.
+
+## Important Factors (XGBoost)
+
+We will make a chart of the top 10 most important factors from the XGBoost model since it is the second best model that we have.
+
+```{r}
+xgb_model <- xgb_model_pca$finalModel
+importance_matrix <- xgb.importance(model = xgb_model)
+
+# Top 10 important features
+top_10 <- head(importance_matrix, 10)
+
+# Professional plot with color and styling
+ggplot(top_10, aes(x = reorder(Feature, Gain), y = Gain, fill = Gain)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  scale_fill_gradient(low = "#99c2ff", high = "#084594") +  # Color gradient
+  theme_minimal(base_size = 13) +
+  theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 7, vjust = 1),
+        axis.text.y = element_text(hjust = 1, size = 7, vjust = 1),
+        legend.position = "None") +
+  labs(
+    title = "Top 10 Feature Importance (XGBoost)",
+    x = "Feature",
+    y = "Importance"
+  )
+
+```
+
+The chart displays the top 10 most important features based on their importance scores. The bar lengths indicate each feature’s contribution to the model, with longer bars representing higher importance. PC12 stands out as the most important feature, followed by PC2, PC14, and others. Conversely, features like PC1 and PC21 show relatively low importance, suggesting they have a minimal impact on the model’s predictions. Since PC12 and PC2 are the most important factor in both model, we will further investigate the Principle Component. 
+
+```{r}
+# Extract the loadings for the 12th principal component
+selected_loadings <- loadings_matrix[, 12]
+
+kable(selected_loadings, col.names = c("Feature", "Loading Value"), caption = "Loadings for the 12th Principal Component (PC12)")
+```
+
+
+Our analysis of the 12th Principal Component (PC12) reveals several key findings:
+
+We found that EXT_SOURCE_3 (0.52) and EXT_SOURCE_2 (0.25) have the strongest positive loadings, indicating that these features are strongly associated with late repayment. Similarly, DAYS_ID_PUBLISH (0.24) and CODE_GENDERM (0.21) also show positive loadings, further reinforcing their role in predicting late repayment.
+
+On the other hand, features such as FLAG_EMAIL (-0.23) and NAME_CONTRACT_TYPE (-0.16) have negative loadings, suggesting that these variables are linked to timely repayment. Other features like DAYS_REGISTRATION (0.24) and REG_REGION_NOT_LIVE_REGION (0.23) also appear important, though their direction of influence (positive or negative) requires deeper exploration.
+
+Overall, variables related to external sources of information, registration details, and gender appear to be most influential in predicting repayment behavior.
+
+```{r}
+# Extract the loadings for the 12th principal component
+selected_loadings <- loadings_matrix[, 2]
+
+kable(selected_loadings, col.names = c("Feature", "Loading Value"), caption = "Loadings for the 2nd Principal Component (PC2)")
+```
+
+In PC2, key variables such as AMT_CREDIT (0.36), AMT_GOODS_PRICE (0.36), and AMT_ANNUITY (0.31) show strong positive loadings, indicating that higher loan amounts, goods prices, and annuities are associated with late or no repayment (TARGET = 1). Additionally, DAYS_EMPLOYED (0.26) and DAYS_REGISTRATION (0.13) suggest that longer employment and account age may increase the likelihood of late repayment. Negative loadings for variables like REG_CITY_NOT_WORK_CITY (-0.36), LIVE_CITY_NOT_WORK_CITY (-0.30), and FLAG_WORK_PHONE (-0.14) imply that living and working in different cities or having a work phone is linked to timely repayment. This highlights the importance of financial and geographic factors in repayment behavior.
+
+# Conclusions
+
+Our project aimed to determine whether an applicant’s social demographics and wealth factors are significant predictors of loan repayment. The results confirm that these factors play a critical role in predicting loan defaults. Among the models tested, Logistic Regression emerged as the most reliable in terms of precision, demonstrating that simpler, linear relationships are sufficient for accurate predictions in this dataset.
+
+The most important factors identified include external data sources `EXT_SOURCE_2` and `EXT_SOURCE_3`, which provided critical insights into an applicant’s creditworthiness. Variables like `DAYS_EMPLOYED`, `AMT_CREDIT`, and `AMT_GOODS_PRICE` also significantly influenced repayment likelihood, indicating that applicants' wealth and the characteristics of the loan need to be put into consideration when giving out loans. 
+
+By focusing on these factors, our model effectively addressed the research question, providing a robust framework for Home Credit Group to make informed, data-driven lending decisions. This reinforces the potential of advanced analytics to enhance financial inclusion, enabling institutions to assess applicants with little to no traditional credit history.
+
+# Limitations
+
+The project leveraged PCA and Elastic Net to improve efficiency and mitigate computational limitations. However, with access to better computational resources, we could have explored a larger hyper-parameter space and tested more complex model configurations, which might have led to better performance. Additionally, while these models provided valuable insights, testing other advanced algorithms, such as neural networks or support vector machines, could potentially uncover better-performing methods for this dataset. 
+
+The dataset was limited to six countries within the CIS and SEA regions. Expanding the data to include more diverse geographical regions and updated financial behaviors would enhance the model’s generalize and provide more robust predictive power. 
+
+While efforts were made to minimize bias, the reliance on demographic variables might inadvertently perpetuate societal inequalities. A more thorough integration of fairness-aware machine learning algorithms could help address this issue and make the model more equitable.
+
+# Reference
+
+1. Loan delinquency trends and strategies to mitigate risk. (n.d.). TruStage. https://www.trustage.com/business/insights/financial-trends/loan-delinquency-effects
+
+2. Author links open overlay panelDaniel Mangrum, AbstractThis paper estimates the impact of requiring high school students to complete personal finance education on federal student loan repayment behavior after college. I merge student loan borrowing and repayment data from the College Scorecard with da, Abraham, K. G., Anderson, A., Bernheim, B. D., Brown, J. R., Cox, J. C., Fitzpatrick, M. D., Gurantz, O., Mueller, H. M., Rooij, M. V., Avery, C., Barr, A., Barrios, T., Bartik, T. J., Bertrand, M., Bettinger, E. P., Billings, S. B., Black, S. E., … Cole, S. (2022, July 20). Personal Finance Education mandates and student loan repayment. Journal of Financial Economics. https://www.sciencedirect.com/science/article/pii/S0304405X22001453 
+
+3. West, L., Takyi-Laryea, A., & Levine, I. (2023, January 25). Student loan borrowers with certain demographic characteristics more likely to experience default. The Pew Charitable Trusts. https://www.pewtrusts.org/en/research-and-analysis/articles/2023/01/24/student-loan-borrowers-with-certain-demographic-characteristics-more-likely-to-experience-default 
+
+4. Chatgpt. (n.d.). https://chatgpt.com/
+
+5. Wikimedia Foundation. (2024, August 22). Home credit. Wikipedia. https://en.wikipedia.org/wiki/Home_Credit
+
+6. About Us. Homecredit. (2024, May 23). https://www.homecredit.net/about-us.aspx/#who-we-are 
+
+7. Home credit default risk. Kaggle. (n.d.). https://www.kaggle.com/competitions/home-credit-default-risk/overview
+
+8. Blagg, K. (2018, February 23). The demographics of income-driven student loan repayment. Urban Institute. https://www.urban.org/urban-wire/demographics-income-driven-student-loan-repayment 
+
+9. Gu, Z., Lv, J., Wu, B., Hu, Z., & Yu, X. (2024, March 7). Credit risk assessment of small and micro enterprise based on machine learning. Heliyon. https://pmc.ncbi.nlm.nih.gov/articles/PMC10937588/#sec17
+
+
+
