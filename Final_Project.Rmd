@@ -6,9 +6,6 @@ author:
 - Ricky Xiong
 date: "`r Sys.Date()`"
 output:
-  word_document:
-    toc: true
-    toc_depth: '3'
   html_document:
     toc: true
     toc_float: true
@@ -16,6 +13,9 @@ output:
     theme: cerulean
     code_folding: hide
     toc_depth: 3
+  word_document:
+    toc: true
+    toc_depth: '3'
 institute: Denison University
 ---
 
