@@ -1,4 +1,4 @@
-# Access Loan Default Risk Through Demographic & Financial Analysis
+# Loan Default Risk by Demographics & Finance
 
 ## Project Overview
 
