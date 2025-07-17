@@ -47,19 +47,23 @@ This project evaluates how demographic and financial factors influence loan defa
 
 ### 📈 Key Findings
 
-* **Logistic Regression** achieved the highest test accuracy (**70.5%**), outperforming Random Forest (66.5%) and XGBoost (66.9%)
-* **EXT\_SOURCE\_2**, **EXT\_SOURCE\_3**, and **DAYS\_EMPLOYED** were among the most influential variables in the top principal components
-* **PC13**, **PC5**, and **PC2** were the most important components across all models, reflecting employment status, financial profile, and regional credit behavior
-* Borrowers with **higher income and education** levels were more likely to repay loans on time
+* We initially observed a high number of correlated variables, so we used a **correlation matrix with a threshold of 0.8** to eliminate redundancy. Highly correlated pairs like `AMT_CREDIT` & `AMT_GOODS_PRICE` and `REGION_RATING_CLIENT` & `REGION_RATING_CLIENT_W_CITY` helped identify key financial and regional patterns. Some redundant variables, like the social circle delinquency counters, were removed for clarity.
+* After removing redundancy, we applied **Principal Component Analysis (PCA)** to reduce 122 features to **31 uncorrelated components** while preserving over **94% of the total variance** in the dataset.
+* The most influential components—**PC13**, **PC5**, and **PC2**—captured dimensions related to employment history, financial health, and regional credit behavior.
+* **Logistic Regression** achieved the highest test accuracy (**70.5%**), outperforming more complex models like XGBoost (66.9%) and Random Forest (66.5%).
+* **EXT\_SOURCE\_2**, **EXT\_SOURCE\_3**, and **DAYS\_EMPLOYED** appeared prominently in top PCs, confirming their predictive strength.
+* Younger borrowers (age **18–25**) showed **elevated default rates**, while higher income and education levels were consistently associated with successful repayment.
 
 ---
 
 ### ✨ Recommendations
 
-* Prioritize **simple, interpretable models** like Logistic Regression for efficient and effective credit risk modeling
-* Emphasize **external credit scores** and **employment history** as key features in risk scoring systems
-* Expand the dataset to include **broader geographic regions** for better generalization across borrower populations
-* Integrate **fairness-aware machine learning** techniques to reduce unintended bias from demographic variables
+* Use **correlation filtering and PCA** as a scalable strategy for reducing multicollinearity and model complexity in large, high-dimensional datasets.
+* Favor **simple, interpretable models** like Logistic Regression when principal components already capture key variation—especially in regulated environments like credit scoring.
+* Prioritize **external credit scores** and **employment duration** when designing loan approval criteria, as these features were consistently strong predictors across models.
+* Tailor lending strategies to **younger applicants**, offering educational tools or safeguards, given their higher risk profiles.
+* Expand the dataset geographically and **periodically retrain** models to reflect evolving financial behavior and economic trends for stronger generalization.
+* Begin integrating **fairness-aware machine learning practices**, especially when demographic data like age or region contribute significantly to predictions.
 
 ---
 
