@@ -51,7 +51,6 @@ This project evaluates how demographic and financial factors influence loan defa
 * **EXT\_SOURCE\_2**, **EXT\_SOURCE\_3**, and **DAYS\_EMPLOYED** were among the most influential variables in the top principal components
 * **PC13**, **PC5**, and **PC2** were the most important components across all models, reflecting employment status, financial profile, and regional credit behavior
 * Borrowers with **higher income and education** levels were more likely to repay loans on time
-* **Young borrowers (18–25)** showed the highest default rates, indicating elevated credit risk in this group
 
 ---
 
@@ -61,7 +60,6 @@ This project evaluates how demographic and financial factors influence loan defa
 * Emphasize **external credit scores** and **employment history** as key features in risk scoring systems
 * Expand the dataset to include **broader geographic regions** for better generalization across borrower populations
 * Integrate **fairness-aware machine learning** techniques to reduce unintended bias from demographic variables
-* Tailor lending strategies to account for **borrower age and education**, especially for younger individuals with limited credit history
 
 ---
 
