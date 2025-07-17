@@ -74,5 +74,7 @@ This project evaluates how demographic and financial factors influence loan defa
 ### 📬 Contact
 
 Viet Nguyen: [nguyen\_v5@denison.edu](mailto:nguyen_v5@denison.edu)
+
 Chien Tran: [tran\_c3@denison.edu](mailto:tran_c3@denison.edu)
+
 Ricky Xiong: [xiong\_r1@denison.edu](mailto:xiong_r1@denison.edu)
