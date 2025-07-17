@@ -29,38 +29,39 @@ This project evaluates how demographic and financial factors influence loan defa
 
 **Data Preprocessing & EDA**
 
-* Imputed missing values, dropped redundant features
-* Explored trends across income, education, and age
+* Imputed missing values and removed redundant or low-variance features
+* Explored trends across income, education, and employment characteristics
 
-**Feature Selection & Dimensionality Reduction**
+**Dimensionality Reduction**
 
-* Applied Elastic Net to select relevant features
-* Used PCA to reduce 122 variables into 25 components
+* Applied **Principal Component Analysis (PCA)** to reduce 122 features to 31 principal components
+* Standardized features before PCA to ensure consistent scale and variance contribution
 
 **Modeling & Evaluation**
 
-* Trained Logistic Regression, Random Forest, and XGBoost
-* Focused on **precision** due to class imbalance
-* Interpreted top principal components using loading analysis
+* Trained **Logistic Regression**, **Random Forest**, and **XGBoost** models using down-sampled training sets to address class imbalance
+* Evaluated models using **accuracy** via 10-fold cross-validation
+* Interpreted top principal components using loadings and regression coefficients to understand key drivers of loan repayment behavior
 
 ---
 
 ### 📈 Key Findings
 
-* **Logistic Regression** achieved the highest precision (0.467)
-* **EXT\_SOURCE\_2**, **EXT\_SOURCE\_3**, and **DAYS\_EMPLOYED** were top predictors
-* **PC12** and **PC2** had strong influence across all models
-* Higher education and income correlated with timely repayment
-* Young borrowers (18–25) had highest default rates
+* **Logistic Regression** achieved the highest test accuracy (**70.5%**), outperforming Random Forest (66.5%) and XGBoost (66.9%)
+* **EXT\_SOURCE\_2**, **EXT\_SOURCE\_3**, and **DAYS\_EMPLOYED** were among the most influential variables in the top principal components
+* **PC13**, **PC5**, and **PC2** were the most important components across all models, reflecting employment status, financial profile, and regional credit behavior
+* Borrowers with **higher income and education** levels were more likely to repay loans on time
+* **Young borrowers (18–25)** showed the highest default rates, indicating elevated credit risk in this group
 
 ---
 
 ### ✨ Recommendations
 
-* Leverage simple, interpretable models (e.g. Logistic Regression) for credit assessment
-* Prioritize external credit sources and employment history in scoring models
-* Expand data collection to better support fairness-aware modeling
-* Design lending strategies that consider borrower age and education status
+* Prioritize **simple, interpretable models** like Logistic Regression for efficient and effective credit risk modeling
+* Emphasize **external credit scores** and **employment history** as key features in risk scoring systems
+* Expand the dataset to include **broader geographic regions** for better generalization across borrower populations
+* Integrate **fairness-aware machine learning** techniques to reduce unintended bias from demographic variables
+* Tailor lending strategies to account for **borrower age and education**, especially for younger individuals with limited credit history
 
 ---
 

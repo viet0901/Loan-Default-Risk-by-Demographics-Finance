@@ -1,11 +1,14 @@
 ---
-title: "Access Loan Default Risk Through Demographic & Financial"
+title: "Loan Default Risk by Demographics & Finance"
 author:
 - Viet Nguyen
 - Chien Tran
 - Ricky Xiong
 date: "`r Sys.Date()`"
 output:
+  pdf_document:
+    toc: true
+    toc_depth: '3'
   html_document:
     toc: true
     toc_float: true
@@ -92,6 +95,7 @@ library(gt)
 library(factoextra)
 library(xgboost)
 library(doParallel)
+library(ranger)
 ```
 
 Summary of what each library does:
@@ -791,164 +795,18 @@ But although we have many high correlation variables, there are still some varia
 
 OBS_30_CNT_SOCIAL_CIRCLE and OBS_60_CNT_SOCIAL_CIRCLE: These two are highly correlated just because they both showing the same thing, but with different threshold of days past due (30 days and 60 days). So this pair will be pass.
 
-## Elastic Net
-
-Next, we will use Elastic Net for variable selection
-
-```{r}
-# Change the TARGET variable into factor for Elastic Net
-train_before$TARGET <- factor(train_before$TARGET, levels = c(0, 1))
-
-# Ensure that levels of TARGET are valid R variable names
-levels(train_before$TARGET) <- make.names(levels(train_before$TARGET))
-
-```
-
-We would have to make our TARGET variable into factor data type and make it as a valid name for the model to select.
-
-```{r}
- # Parallel Processing for faster training
- #cl <- makeCluster(detectCores()-1)
- #registerDoParallel()
- 
-  # Define custom Precision function with X0 as positive
-   precisionSummary <- function(data, lev = NULL, model = NULL) {
-     data$obs <- factor(data$obs)
-     data$pred <- factor(data$pred)
-     precision <- posPredValue(data$obs, data$pred, positive = "X1")
-     out <- c(Precision = precision)
-     return(out)
-   }
-   
- # Define train control for cross validation and scale the TARGET variable
-   # train_control <- trainControl(
-   #   method = "cv",                  # Cross-validation
-   #   number = 10,                     # 5-fold CV
-   #   classProbs = TRUE,              # Enable class probabilities
-   #   summaryFunction = precisionSummary,  # Use custom Precision function
-   #   sampling = "down"
-   #   )
- 
-  # Elastic Net model training
-  #  elastic_net_model <- train(
-  #    TARGET ~ .,                    # Formula for predictors and outcome
-  #    data = train_before,                    # Dataset
-  #    method = "glmnet",              # Elastic Net
-  #    metric = "Precision",           # Optimize for Precision
-  #    trControl = train_control,      # Training control
-  #    tuneGrid = expand.grid(         # Tuning grid for alpha and lambda
-  #      alpha = seq(0.1, 0.5, by = 0.1),
-  #      lambda = seq(0.01, 0.05, by = 0.01)),
-  #    preProcess = c("center", "scale"))
-  # 
-  # stopCluster(cl)
-  # registerDoSEQ()
- 
-# Save the model
-# saveRDS(elastic_net_model, "elastic.rds")
-
-#Read the model
-elastic_net_model <- readRDS("elastic.rds")
-
-# Print model results
-print(elastic_net_model)
-```
-
-Since our dataset is large which could take us a long time to run, we decide to save the model result into file, and print it.
-
-The Elastic Net model was was evaluated using 10-fold cross-validation with down-sampling to address class imbalance. Cross-validation is used to assess the model’s performance by training and testing it on different subsets of the data, helping to ensure that the model generalizes well to unseen data and reduces the risk of overfitting. A 10-fold cross-validation was chosen for reliable performance estimation, which introduce more randomness into the model. The grid search tested various combinations of alpha (regularization type) and lambda (regularization strength) parameters, with a small range of values (from 0.1 to 0.5 for alpha and from 0.01 to 0.05 for lambda). This narrow range was selected to keep the model training efficient, avoiding excessive computational time and complexity. The best-performing model, based on precision, was achieved with alpha = 0.1 and lambda = 0.01, which yielded the highest precision of 0.6645548.
-
-While this combination was optimal within the tested parameters, one limitation of this approach is that the relatively small range of alpha and lambda values may have excluded better-performing configurations outside the tested grid. This could potentially affect the stability and reliability of the performance estimate.
-
-```{r}
-# Extract coefficients of the best model
-best_model <- elastic_net_model$finalModel
-best_lambda <- elastic_net_model$bestTune$lambda
-selected_features <- coef(best_model, s = best_lambda)
-
-coefficients <- as.matrix(selected_features)
-
-# Identify non-zero coefficients (i.e., variables retained in the model)
-non_zero_coefficients <- coefficients[coefficients != 0, , drop = FALSE]
-
-print(non_zero_coefficients)
-```
-
-This is our significant variable after Elastic Net. Since after our selection, there still could be correlation in our data, we would do the heatmap of correlation variable one more time too address this problem.
-
-```{r}
-# Convert into matrix form for significant variables 
-non_zero_coefficients <- as.matrix(non_zero_coefficients)
-
-selected_features <- colnames(train_before)[which(non_zero_coefficients[-1,] != 0)]
-
-# Subset the original dataset to include only final features for PCA
-final_filtered_data <- train_before %>% 
-  dplyr::select(selected_features)
-
-x <- final_filtered_data %>% 
-  dplyr::select(-TARGET)
-
-# Calculate the initial correlation matrix
-corr_matrix <- cor(x)
-
-# Set a high correlation threshold
-threshold <- 0.8
-
-# Create a copy of the correlation matrix, setting correlations below the threshold to NA
-corr_matrix[abs(corr_matrix) < threshold] <- NA  # Set correlations below the threshold to NA
-
-# Function to check if all non-NA values are 1
-all_one_or_na <- function(x) all(x[!is.na(x)] == 1)
-
-# Remove columns and rows that contain only 1 and NA
-corr_matrix <- corr_matrix[, !apply(corr_matrix, 2, all_one_or_na)]
-corr_matrix <- corr_matrix[!apply(corr_matrix, 1, all_one_or_na), ]
-
-# Identify variables with at least one significant correlation
-significant_vars <- apply(!is.na(corr_matrix), 1, any)
-
-# Filter out variables without significant correlations
-filtered_corr_matrix <- corr_matrix[significant_vars, significant_vars]
-
-# Convert the filtered correlation matrix into long format
-cor_long <- melt(filtered_corr_matrix, na.rm = TRUE)
-
-# Plot the heatmap
-ggplot(data = cor_long, aes(Var1, Var2, fill = value)) +
-  geom_tile() +
-  scale_fill_gradient2(low = "#084594", high = "#B22222", mid = "white", 
-                       limit = c(-1, 1), midpoint = 0, 
-                       name = "Correlation") +
-  labs(title = paste("Filtered Correlation Matrix (Corr >= ", threshold, ")", sep = ""), 
-       x = "", 
-       y = "") +
-  theme_minimal(base_size = 13) +
-  theme(plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
-        axis.text.x = element_text(angle = 45, hjust = 1, size = 7, vjust = 1),
-        axis.text.y = element_text(hjust = 1, size = 7, vjust = 1))
-```
-
-From the heatmap, we observed that certain variables, such as AMT_CREDIT and AMT_GOODS_PRICE, or DAYS_EMPLOYED and FLAG_EMP_PHONE, show high correlation. Since the importance of these variables needs to be evaluated in the context of our model, we applied domain knowledge to filter out the highly correlated variables before performing PCA. This ensures that we retain only the most relevant features and prevent redundancy, allowing PCA to work more effectively in reducing dimensionality and improving model performance..
-
-## Domain Kowledge
-
-```{r}
-# Remove correlated variable
-final_filtered_data <- final_filtered_data %>% 
-  dplyr::select(-CNT_CHILDREN, -FLAG_EMP_PHONE, -REGION_RATING_CLIENT)
-
-# Filter x variable
-final_filtered_data_x <- final_filtered_data[, -which(names(final_filtered_data) == "TARGET")]
-```
-
-Since the number of children is already represented in the number of family members, we don’t need to retain both features. Additionally, if a client has a job, it is highly probable they would also have an employer phone number, and we observed that the region rating for clients is quite similar, so these variables can be removed as well. After filtering out these redundant variables, we will create a new dataset excluding the TARGET variable, which will then be used for PCA to reduce dimensionality and improve model performance.
-
-After selecting the most impactful variables and delete uncessary variables, we proceeded with Principal Component Analysis (PCA) to reduce dimensionality and mitigate multicollinearity. PCA helps by combining correlated features into uncorrelated principal components, allowing the model to focus on the most important underlying patterns. This step aims to enhance the efficiency of model training and prevent overfitting, as it reduces the risk of including redundant features that may not add significant predictive power.
 
 ## Principal Component Analysis
 
+After that, we proceeded with Principal Component Analysis (PCA) to reduce dimensionality and mitigate multicollinearity. PCA helps by combining correlated features into uncorrelated principal components, allowing the model to focus on the most important underlying patterns. This step aims to enhance the efficiency of model training and prevent overfitting, as it reduces the risk of including redundant features that may not add significant predictive power.
+
 ```{r}
+# Rename
+final_filtered_data <- train_before
+
+# Filter x variable
+final_filtered_data_x <- final_filtered_data[, -which(names(final_filtered_data) == "TARGET")]
+
 # Apply PCA to the standardized data
 pca_result <- prcomp(final_filtered_data_x, center = TRUE, scale. = TRUE)
 
@@ -961,7 +819,7 @@ First, we will apply PCA to our data. Before doing so, it is essential to center
 summary(pca_result)
 ```
 
-The PCA results indicate the importance of each principal component in explaining the variance in the data. The first few components capture the majority of the variance, with PC1 explaining 9.46% of the variance alone, and the first three components together accounting for 23.55% of the total variance. By PC25, the cumulative proportion of variance reaches 89.9%, meaning that the first 25 components explain most of the variability in the data. Beyond this, the components explain diminishing amounts of variance, with PC35 contributing only 0.034%. This suggests that dimensionality can be effectively reduced by focusing on the first 25 components, retaining significant information while reducing complexity and improving model efficiency.
+The PCA results indicate the importance of each principal component in explaining the variance in the data. The first few components capture the majority of the variance, with PC1 explaining 11.01% of the variance alone, and the first three components together accounting for 23.55% of the total variance. By PC31, the cumulative proportion of variance reaches 94.06%, meaning that the first 31 components explain most of the variability in the data. Beyond this, the components explain diminishing amounts of variance. This suggests that dimensionality can be effectively reduced by focusing on the first 31 components, retaining significant information while reducing complexity and improving model efficiency.
 
 We would make a plot too check our findings and proceed with our data after PCA
 
@@ -977,24 +835,28 @@ plot(cumulative_variance, type = "b", xlab = "Number of Components", ylab = "Cum
      main = "Cumulative Explained Variance by Principal Components")
 ```
 
-The plot visualizes the cumulative explained variance, with the number of components on the x-axis and the cumulative variance on the y-axis. The resulting plot shows that the first 25 components explain approximately 90% of the variability in the data. As more components are added, the cumulative variance increases at a slower rate, indicating diminishing returns in capturing additional variance. Therefore, we would choose to retain the first 25 components for further analysis, as they capture most of the important information, while reducing dimensionality and simplifying the model without losing significant explanatory power.
+The plot visualizes the cumulative explained variance, with the number of components on the x-axis and the cumulative variance on the y-axis. The resulting plot shows that the first 31 components explain approximately 94% of the variability in the data. As more components are added, the cumulative variance increases at a slower rate, indicating diminishing returns in capturing additional variance. Therefore, we would choose to retain the first 31 components for further analysis, as they capture most of the important information, while reducing dimensionality and simplifying the model without losing significant explanatory power.
 
 ```{r}
 # Select the PC for our data
-select_train <- pca_result$x[, 1:25]
+select_train <- pca_result$x[, 1:31]
 
 # Combine the TARGET variable and our principle component
 cleaned_matrix <- bind_cols(TARGET = as.factor(final_filtered_data$TARGET), select_train)
 
 # Transform it to DF for trainning
 pca_transformed_df <- as.data.frame(cleaned_matrix)
+
+pca_transformed_df$TARGET <- factor(pca_transformed_df$TARGET,
+                                     levels = c(0, 1),
+                                     labels = c("X0", "X1"))
 ```
 
 We will create a new dataset using the selected principal components from the PCA transformation and proceed to train our model using this reduced-dimensional data.
 
 # Methodology
 
-Next, we will train our model using three different methods: Logistic Regression (LR), Random Forest (RF), and XGBoost (XGB). 
+Next, we will train our model using four different methods: Logistic Regression (LR), Random Forest (RF), and XGBoost (XGB). 
 
 - Logistic Regression will serve as a baseline model, as it is particularly effective for capturing linear relationships between the predictors and the target variable. This model will help us understand the basic linear patterns in the data.
 
@@ -1002,9 +864,7 @@ Next, we will train our model using three different methods: Logistic Regression
 
 - XGBoost has been shown to perform well in many predictive tasks due to its efficiency, regularization, and ability to handle unstructured data.  As demonstrated by Gu et al. (2024) in their study on credit risk assessment for small and micro enterprises, XGBoost outperforms other machine learning models in terms of both accuracy and stability, making it a strong choice for our analysis.
 
-We will train Logistic Regression (LR), Random Forest (RF), and XGBoost (XGB) models using the dataset after applying Principal Component Analysis (PCA). PCA helps reduce the dimensionality of the data, improve model efficiency, and enhance generalization by removing multicollinearity and noise. By focusing on the principal components, which capture the most significant variance in the data, we aim to assess how well the reduced feature set performs in terms of predicting the target variable. This approach will also allow us to evaluate how dimensionality reduction affects model interpretability and how the transformation impacts the ability of the models to generalize to new, unseen data. Training on PCA-transformed data will provide insights into how each model performs when trained on a simplified, noise-reduced version of the original dataset
-
-We will use Precision as our evaluation metric, as false positives—predicting repayment when the loan won’t be repaid—are particularly costly in this context. Our goal in this dataset is to investigate whether an applicant’s social demographics and wealth factors are significant predictors of whether they will repay a loan. By focusing on Precision, we aim to minimize the impact of false positives and ensure that the model's predictions are as reliable as possible.
+We will train Logistic Regression (LR), Elastic Net (EN), Random Forest (RF), and XGBoost (XGB) models using the dataset after applying Principal Component Analysis (PCA). PCA helps reduce the dimensionality of the data, improve model efficiency, and enhance generalization by removing multicollinearity and noise. By focusing on the principal components, which capture the most significant variance in the data, we aim to assess how well the reduced feature set performs in terms of predicting the target variable. This approach will also allow us to evaluate how dimensionality reduction affects model interpretability and how the transformation impacts the ability of the models to generalize to new, unseen data. Training on PCA-transformed data will provide insights into how each model performs when trained on a simplified, noise-reduced version of the original dataset
 
 ## Preprocess Test Data
 
@@ -1034,7 +894,7 @@ test_filled <- test_data %>%
   mutate(OCCUPATION_TYPE = ifelse(is.na(OCCUPATION_TYPE), "Unknown", OCCUPATION_TYPE)) %>% 
   mutate(NAME_TYPE_SUITE = ifelse(is.na(NAME_TYPE_SUITE), "Unaccompanied", NAME_TYPE_SUITE)) %>% 
   mutate(across(c(DAYS_BIRTH, DAYS_LAST_PHONE_CHANGE, DAYS_EMPLOYED, DAYS_ID_PUBLISH, DAYS_REGISTRATION), abs))
-
+   
 # Reorder and relabel the education categories
 test_filled$NAME_EDUCATION_TYPE <- factor(
   test_filled$NAME_EDUCATION_TYPE,
@@ -1078,30 +938,23 @@ test_before$TARGET <- factor(test_before$TARGET, levels = c(0, 1))
 levels(test_before$TARGET) <- make.names(levels(test_before$TARGET))
 
 # Subset the original dataset to include only final features for PCA
-final_filtered_test <- test_before %>% 
-  dplyr::select(selected_features)
-
-# Remove correlated variable
-final_filtered_test <- final_filtered_test %>% 
-  dplyr::select(-CNT_CHILDREN, -FLAG_EMP_PHONE, -REGION_RATING_CLIENT) 
-
-final_filtered_test <- na.omit(final_filtered_test)  # Removes rows with NA values
+final_filtered_test <- test_before 
 
 # Filter 
 final_filtered_test_x <- final_filtered_test[, -which(names(final_filtered_test) == "TARGET")]
 
 # Apply PCA to the standardized data
-pca_result_test <- prcomp(final_filtered_test_x, center = TRUE, scale. = TRUE)
+train_pca <- predict(pca_result, final_filtered_test_x)[, 1:31]
 
 # Select the PC for our data
-select_train_test <- pca_result_test$x[, 1:25]
+select_train_test <- train_pca
 
 # Combine the TARGET variable and our principle component
 cleaned_matrix_test <- bind_cols(select_train_test, TARGET = as.factor(final_filtered_test$TARGET))
 
 # Transform it to DF for trainning
 pca_transformed_test <- as.data.frame(cleaned_matrix_test)
-
+pca_transformed_test <- na.omit(pca_transformed_test)
 # Getting independant and dependant variable in test data
 x_test <- pca_transformed_test %>% 
   dplyr::select(-TARGET)
@@ -1123,7 +976,7 @@ train_control1 <- trainControl(
   method = "cv",                   # Cross-validation
   number = 10,                      # Number of folds for CV
   classProbs = TRUE,                # To compute probabilities
-  summaryFunction = precisionSummary, # Use custom Precision function
+  summaryFunction = defaultSummary, # Use custom Precision function
   sampling = "down",
   allowParallel = TRUE
   )
@@ -1136,7 +989,7 @@ logistic_model_pca <- train(
   method = "glm",                   # Generalized Linear Model
   family = "binomial",              # Logistic regression
   trControl = train_control1,        # Cross-validation settings
-  metric = "Precision",
+  metric = "Accuracy",
   preProcess = c("center", "scale")
 )
 
@@ -1147,12 +1000,12 @@ registerDoSEQ()
 # View model results
 print(logistic_model_pca)
 ```
+
 We would use Parralel Processing for faster training time. The predictors were pre-processed by centering and scaling, ensuring that all variables were on the same scale. To assess the model's performance, a 10-fold cross-validation technique was employed, providing a more reliable measure of its generalization ability. Additionally, to address any class imbalance, down-sampling was applied before pre-processing to ensure balanced representation of both classes during training. 
 
-The model's resampling results yielded a Precision of 0.6545, indicating that approximately 65.45% of the model's positive predictions ('X1') were correct, which is particularly valuable in contexts where minimizing false positives is critical.
+The model's resampling results yielded an accuracy of 0.6801, indicating that approximately 68% of the model’s predictions were correct. This reflects a reasonably strong overall performance in classifying loan repayment outcomes.
 
-
-We will evaluate the model's performance on the test set and calculate its precision, allowing us to compare its effectiveness with other models. This will provide insight into how well the model generalizes to unseen data, specifically focusing on its ability to correctly identify positive cases while minimizing false positives.
+We will evaluate the model's performance on the test set and calculate its accuracy, allowing us to compare its effectiveness with other models. This will provide insight into how well the model generalizes to unseen data.
 
 ```{r}
 # Make predictions on the test set
@@ -1161,8 +1014,12 @@ lr_predictions <- predict(logistic_model_pca, newdata = x_test)
 # Assuming the true labels are stored in test_target
 lr_conf_matrix <- confusionMatrix(lr_predictions, y_test)
 
-lr_precision <- lr_conf_matrix$byClass["Specificity"]
+lr_conf_matrix
+
+lr_accuracy <- as.numeric(lr_conf_matrix$overall["Accuracy"])
 ```
+
+On the held-out test set, the logistic regression model using PCA-transformed predictors achieved an accuracy of 70.5%, correctly predicting loan repayment status for a majority of borrowers. This performance indicates strong generalization to unseen data and outperforms baseline accuracy levels, demonstrating the model’s ability to capture meaningful patterns even after dimensionality reduction.
 
 ## Random Forest 
 
@@ -1171,43 +1028,46 @@ Next, we will train our model using Random Forest, a powerful ensemble learning 
 ```{r}
 #   cl <- makeCluster(detectCores()-1)
 #   registerDoParallel()
-#   
-# Define train control with custom Precision function
-   # train_control2 <- trainControl(
-   #   method = "cv",                   # Cross-validation
-   #   number = 5,                      # Number of folds for CV
-   #   summaryFunction = precisionSummary, # Use custom Precision function
-   #   sampling = "down",
-   #   verboseIter = TRUE,
-   #   allowParallel = TRUE
-   #   )
-   # 
-   # tuneGrid <- expand.grid(
-   #   mtry = seq(2,10, by = 2)
-   # )
-   # 
-   # # Train the Random Forest model
-   # rf_model_pca <- train(
-   #   TARGET ~ .,                   # Formula (target ~ predictors)
-   #   data = pca_transformed_df,              # Training data
-   #   method = "rf",                 # Random Forest method
-   #   trControl = train_control2,     # Cross-validation control
-   #   metric = "Precision",              # Optimize for ROC (AUC)
-   #   tuneGrid = tuneGrid,
-   #   ntree = 100,
-   #   preProcess = c("center", "scale")# Tune a few hyperparameters (adjust if needed)
-   # )
-   # 
-   # stopCluster(cl)
-   # registerDoSEQ()
-
-#saveRDS(rf_model_pca, "rf_model_pca.rds")
+# #
+# # Define train control with custom Precision function
+#    train_control2 <- trainControl(
+#      method = "cv",                   # Cross-validation
+#      number = 10,                      # Number of folds for CV
+#      summaryFunction = defaultSummary, # Use custom Precision function
+#      sampling = "down",
+#      verboseIter = TRUE,
+#      allowParallel = TRUE
+#      )
+# 
+#     tune_grid <- expand.grid(
+#       mtry = c(2, 4, 6, 8, 10),
+#       splitrule = c("gini"),              # For classification
+#       min.node.size = c(1, 5, 10)         # Minimum samples per leaf
+#     )
+# 
+#    # Train the Random Forest model
+#    rf_model_pca <- train(
+#      TARGET ~ .,                   # Formula (target ~ predictors)
+#      data = pca_transformed_df,              # Training data
+#      method = "ranger",                 # Random Forest method
+#      trControl = train_control2,     # Cross-validation control
+#      metric = "Accuracy",              # Optimize for Accuracy
+#      tuneGrid = tune_grid,
+#      ntree = 200,
+#      importance = "impurity",
+#      preProcess = c("center", "scale")# Tune a few hyperparameters (adjust if needed)
+#    )
+# 
+#    stopCluster(cl)
+#    registerDoSEQ()
+# 
+# saveRDS(rf_model_pca, "rf_model_pca.rds")
 rf_model_pca <- readRDS("rf_model_pca.rds") 
 # Print the model results
 print(rf_model_pca)
 ```
 
-We would use Parralel Processing for faster training time. The data underwent pre-processing, which included centering and scaling of all predictors, followed by a 5-fold cross-validation for resampling since it can balance the efficiency and accuracy of the model. Additional down-sampling was applied prior to pre-processing to address class imbalance. The model was tuned using the parameter mtry, which determines the number of variables randomly selected at each split in the trees. The resampling results showed that the precision values varied with different values of mtry: 0.64499 for mtry = 2, 0.64238 for mtry = 4, 0.64836 for mtry = 6, 0.64736 for mtry = 8, and 0.64344 for mtry = 10. Based on the highest precision value of 0.64836, the optimal mtry value of 6 was selected for the final model.
+We would use Parralel Processing for faster training time. The data underwent pre-processing, which included centering and scaling of all predictors, followed by a 5-fold cross-validation for resampling since it can balance the efficiency and accuracy of the model. Additional down-sampling was applied prior to pre-processing to address class imbalance. The model was tuned using the parameter mtry, which determines the number of variables randomly selected at each split in the trees. Based on the highest accuracy value of 0.6719429, the optimal mtry value of 10 was selected for the final model.
 
 ```{r}
 # Make predictions on the test set
@@ -1216,8 +1076,12 @@ rf_predictions <- predict(rf_model_pca, newdata = x_test)
 # Assuming the true labels are stored in test_target
 rf_conf_matrix <- confusionMatrix(rf_predictions, y_test)
 
-rf_precision <- rf_conf_matrix$byClass["Specificity"]
+rf_conf_matrix
+
+rf_accuracy <- as.numeric(rf_conf_matrix$overall["Accuracy"])
 ```
+
+The Random Forest model achieved a test set accuracy of 66.5%, correctly predicting the loan repayment status for approximately two-thirds of borrowers. This indicates that the model performs moderately well in distinguishing between on-time (X0) and late (X1) repayments, with a sensitivity of 66.6% and specificity of 65.9%, suggesting relatively balanced performance across both classes.
 
 ## Extreme Gradient Boosting
 
@@ -1227,49 +1091,38 @@ Finally, we will train our model using XGBoost, a powerful and efficient gradien
 # # Set up parallel processing
 # cl <- makeCluster(detectCores() - 1) # Use one less core to avoid overload
 # registerDoParallel(cl)
-# 
-# # Set up train control with custom precision function
+#
+# Set up train control for accuracy
 # train_control3 <- trainControl(
-#   method = "cv",                         # Cross-validation
-#   number = 5,                            # 5-fold cross-validation
-#   summaryFunction = precisionSummary,     # Use custom precision function
-#   sampling = "down",                     # Down-sample the majority class to balance classes
-#   allowParallel = TRUE,                    # Enable parallelization
+#   method = "cv",                    # Cross-validation
+#   number = 10,                      # 10-fold cross-validation
+#   summaryFunction = defaultSummary, # Use default metrics (Accuracy, Kappa)
+#   sampling = "down",                # Handle class imbalance
+#   allowParallel = TRUE              # Enable parallel training
 # )
 # 
-# # Hyperparameter grid for tuning XGBoost
-# tuneGrid <- expand.grid(
-#   nrounds = 50,                     # Number of boosting rounds (trees)
-#   max_depth = c(3, 6),                      # Maximum depth of trees
-#   eta = c(0.1, 0.3),                        # Learning rate
-#   gamma = c(0, 0.1),                        # Minimum loss reduction required to make a further partition
-#   colsample_bytree = c(0.6, 0.8),           # Fraction of features used for each tree
-#   min_child_weight = c(1, 5),                # Minimum sum of instance weight (hessian) needed in a child
-#   subsample = c(0.7, 0.8)                   # Fraction of samples used for training each tree
-# )
-# 
-# # Train the XGBoost model using caret
+# # Train the XGBoost model using tuneLength
 # xgb_model <- train(
-#   TARGET ~ .,                   # Formula (TARGET as the target variable)
-#   data = pca_transformed_df,     # Your PCA-transformed data frame
-#   method = "xgbTree",            # Specify XGBoost model (tree-based)
-#   trControl = train_control3,    # Cross-validation control with custom precision function
-#   tuneGrid = tuneGrid,           # Hyperparameter tuning grid
-#   metric = "Precision",          # Optimize for Precision
-#   preProcess = c("center", "scale")  # Preprocess data: standardize features
+#   TARGET ~ .,                        # Formula: TARGET is the target variable
+#   data = pca_transformed_df,         # PCA-transformed data
+#   method = "xgbTree",                # XGBoost tree-based model
+#   trControl = train_control3,        # Cross-validation setup
+#   tuneLength = 10,                   # Try 10 random hyperparameter combinations
+#   metric = "Accuracy",               # Optimize for Accuracy
+#   preProcess = c("center", "scale")  # Normalize features
 # )
 # 
 # # Stop the parallel cluster
 # stopCluster(cl)
-#registerDoSEQ()  # Disable parallelism for further operations
-
-#saveRDS(xgb_model, "xgb_model_pca.rds")
+# registerDoSEQ()  # Disable parallelism for further operations
+# 
+# saveRDS(xgb_model, "xgb_model_pca.rds")
 xgb_model_pca <- readRDS("xgb_model_pca.rds") 
 # Print the model results
 print(xgb_model_pca)
 ```
 
-The model underwent pre-processing, including centering and scaling of all features, followed by 5-fold cross-validation and down-sampling to handle class imbalance. Various hyperparameters, including learning rate (eta), maximum tree depth (max_depth), minimum child weight, and others, were tuned to optimize performance. However, due to the computationally expensive nature of XGBoost, we opted for a more limited hyperparameter search to reduce training time. The final model was selected using a precision metric, with the best configuration being eta = 0.1, max_depth = 3, gamma = 0, colsample_bytree = 0.6, min_child_weight = 5, and subsample = 0.7. While more extensive fine-tuning could potentially improve performance further, the decision to limit the search was based on balancing model accuracy and computational efficiency. The selected parameters provided a good trade-off, ensuring the model was trained within a reasonable timeframe while still achieving a precision score of 0.657.
+The model underwent pre-processing, including centering and scaling of all features, followed by 10-fold cross-validation and down-sampling to handle class imbalance. The final model was selected using a accuracy metric, with the best configuration being eta = 0.4, max_depth = 1, gamma = 0, colsample_bytree = 0.8, min_child_weight = 1, and subsample = 0.7. While more extensive fine-tuning could potentially improve performance further, the decision to limit the search was based on balancing model accuracy and computational efficiency. The selected parameters provided a good trade-off, ensuring the model was trained within a reasonable timeframe while still achieving a accuracy score of 0.6743901.
 
 ```{r}
 # Make predictions on the test set
@@ -1278,7 +1131,9 @@ xgb_predictions <- predict(xgb_model_pca, newdata = x_test)
 # Assuming the true labels are stored in test_target
 xgb_conf_matrix <- confusionMatrix(xgb_predictions, y_test)
 
-xgb_precision <- xgb_conf_matrix$byClass["Specificity"]
+xgb_conf_matrix
+
+xgb_accuracy <- as.numeric(xgb_conf_matrix$overall["Accuracy"])
 ```
 
 
@@ -1288,27 +1143,27 @@ xgb_precision <- xgb_conf_matrix$byClass["Specificity"]
 
 ```{r}
 # Create a data frame with the model names and their corresponding precision
-precision_table <- data.frame(
+accuracy_table <- data.frame(
   Model = c("Random Forest (RF)", "Extreme Gradient Boosting (XGB)", "Logistic Regression (LR)"),
-  Precision = c(rf_precision, xgb_precision, lr_precision)
+  Accuracy = c(rf_accuracy, xgb_accuracy, lr_accuracy)
 )
 
 # Order the data frame by decreasing precision
-precision_table <- precision_table[order(-precision_table$Precision), ]
+accuracy_table <- accuracy_table[order(-accuracy_table$Accuracy), ]
 
 # Print the table using knitr::kable
-kable(precision_table, caption = "Model Precision")
+kable(accuracy_table, caption = "Model Accuracy")
 ```
 
-The table presents the Precision of three models, listed in decreasing order:
+The table presents the Accuracy of three models, listed in decreasing order:
 
-Logistic Regression (LR) achieved the highest Precision at 0.4676. This means it was the most reliable in correctly predicting repayment cases (true positives), minimizing false positives the most effectively among the models tested.
+Logistic Regression (LR) achieved the highest Accuracy at	0.7053684. This means it was the most reliable in correctly predicting repayment cases (true positives), minimizing false positives the most effectively among the models tested.
 
-eXtreme Gradient Boosting (XGB) followed with a Precision of 0.4556, slightly lower than Logistic Regression. While it was still good at correctly identifying true positives, it did so at a slightly higher rate of false positives compared to LR.
+eXtreme Gradient Boosting (XGB) followed with a Accuracy of 0.6686585, slightly lower than Logistic Regression. While it was still good at correctly identifying true positives, it did so at a slightly higher rate of false positives compared to LR.
 
-Random Forest (RF) had the lowest Precision at 0.4417, indicating it was the least effective at minimizing false positives when predicting repayment.
+Random Forest (RF) had the lowest Accuracy at 0.6652303, indicating it was the least effective at minimizing false positives when predicting repayment.
 
-Interestingly, the results contradict our initial expectations. Given the reputation of XGBoost (XGB) as a powerful model for handling complex relationships, we anticipated it would perform better in terms of Precision. However, Logistic Regression (LR) outperformed XGBoost (XGB) in this case, highlighting that even simpler models can sometimes deliver better results, especially when the dataset is relatively straightforward or when the cost of false positives is a critical consideration.
+Interestingly, the results contradict our initial expectations. Given the reputation of XGBoost (XGB) as a powerful model for handling complex relationships, we anticipated it would perform better in terms of Precision. However, Logistic Regression (LR) outperformed XGBoost (XGB) in this case, highlighting that even simpler models can sometimes deliver better results, especially when the dataset is relatively straightforward and PCA have make the data much easier to predict.
 
 ## Principle Component
 
@@ -1329,21 +1184,13 @@ kable(selected_loadings,
 
 ```
 
-The provided table offers valuable insights into the relationships between features and principal components (PCs) derived from a Principal Component Analysis (PCA). By examining the correlation between various features (such as `NAME_CONTRACT_TYPE`, `CODE_GENDERM`, `AMT_INCOME_TOTAL`, etc.) and the PCs, we can identify which variables contribute significantly to the variance captured by each component. For instance, variables like `AMT_CREDIT` and `AMT_GOODS_PRICE` show strong positive correlations with PC1, indicating their importance in influencing the first principal component. In contrast, variables such as `FLAG_OWN_CARY` and `FLAG_OWN_REALTYY` are more correlated with different PCs. 
+The principal component loadings reveal how original features contribute to the key dimensions of variance in the dataset. The first principal component (PC1) appears heavily influenced by variables related to employment and age, such as DAYS_EMPLOYED, DAY_EMPLOYED_PERCENT, and AGES, suggesting it captures a general demographic and work-history trend. PC2 is dominated by financial attributes like AMT_CREDIT, AMT_ANNUITY, AMT_GOODS_PRICE, and DOCUMENT_COUNT, indicating it represents a customer’s financial application profile. Meanwhile, PC3 reflects regional credit behavior and affordability, with strong negative loadings from REGION_RATING_CLIENT, REGION_RATING_CLIENT_W_CITY, and CREDIT_INCOME_PERCENT. Together, these components help reduce the dataset’s complexity while preserving critical variance tied to customer background, financial standing, and regional credit risk.
 
 ```{r}
 summary(logistic_model_pca)
 ```
 
-The regression output shows the relationship between the principal components (PCs) and the response variable. Several PCs have statistically significant coefficients, indicating their strong influence on the model. For example, PC2, PC3, PC4, and PC12 have very low p-values (less than 0.001), suggesting that these principal components are highly significant predictors. These PCs likely correspond to the most influential features in the data, as indicated by their strong correlations with the response variable.
-
-PC1, PC4, PC10, and PC7 also show significant coefficients (p-values < 0.01) with moderate effect sizes, meaning they play an important role in the model. For example, PC2 has a large negative coefficient (-0.369), indicating a negative relationship with the response variable, while PC4 has a positive coefficient (0.253), suggesting a positive impact.
-
-On the other hand, PCs like PC17, PC19, and PC1 have higher p-values (greater than 0.1), suggesting they do not significantly influence the response variable in this model.
-
-The Intercept is not significant (p-value = 0.43), meaning the baseline model without any predictor does not provide strong predictive power. The model's overall fit is indicated by a deviance of 48490, down from a null deviance of 55138, suggesting that the principal components contribute significantly to reducing the residual deviance and explaining the variance in the response variable.
-
-In summary, several principal components play a critical role in explaining the response variable, with PC2, PC3, PC4, and PC12 showing the most notable influence based on their significant coefficients and low p-values.
+The logistic regression output shows how each principal component (PC) contributes to predicting the likelihood of a loan being repaid on time (X0). Several components—including PC1, PC2, PC3, PC5, PC8, and PC13—exhibit large, highly significant coefficients, indicating their strong influence on the model’s predictions. For instance, PC1 and PC8 have large positive coefficients, suggesting that higher values along these dimensions increase the likelihood of a positive outcome (on-time repayment). In contrast, components like PC2, PC3, PC5, and PC13 have strong negative associations, implying higher values along these PCs are linked to delayed or missed repayments. Most predictors are statistically significant at the 0.001 level, reflecting a robust model fit. The model also shows a substantial reduction in deviance from 55,138 to 48,373, indicating good explanatory power, while an AIC of 48,437 supports its relative efficiency among competing models.
 
 ## Important Factors (XGBoost)
 
@@ -1374,48 +1221,35 @@ ggplot(top_10, aes(x = reorder(Feature, Gain), y = Gain, fill = Gain)) +
 
 ```
 
-The chart displays the top 10 most important features based on their importance scores. The bar lengths indicate each feature’s contribution to the model, with longer bars representing higher importance. PC12 stands out as the most important feature, followed by PC2, PC14, and others. Conversely, features like PC1 and PC21 show relatively low importance, suggesting they have a minimal impact on the model’s predictions. Since PC12 and PC2 are the most important factor in both model, we will further investigate the Principle Component. 
-
-```{r}
-# Extract the loadings for the 12th principal component
-selected_loadings <- loadings_matrix[, 12]
-
-kable(selected_loadings, col.names = c("Feature", "Loading Value"), caption = "Loadings for the 12th Principal Component (PC12)")
-```
-
-
-Our analysis of the 12th Principal Component (PC12) reveals several key findings:
-
-We found that EXT_SOURCE_3 (0.52) and EXT_SOURCE_2 (0.25) have the strongest positive loadings, indicating that these features are strongly associated with late repayment. Similarly, DAYS_ID_PUBLISH (0.24) and CODE_GENDERM (0.21) also show positive loadings, further reinforcing their role in predicting late repayment.
-
-On the other hand, features such as FLAG_EMAIL (-0.23) and NAME_CONTRACT_TYPE (-0.16) have negative loadings, suggesting that these variables are linked to timely repayment. Other features like DAYS_REGISTRATION (0.24) and REG_REGION_NOT_LIVE_REGION (0.23) also appear important, though their direction of influence (positive or negative) requires deeper exploration.
-
-Overall, variables related to external sources of information, registration details, and gender appear to be most influential in predicting repayment behavior.
-
-```{r}
-# Extract the loadings for the 12th principal component
-selected_loadings <- loadings_matrix[, 2]
-
-kable(selected_loadings, col.names = c("Feature", "Loading Value"), caption = "Loadings for the 2nd Principal Component (PC2)")
-```
-
-In PC2, key variables such as AMT_CREDIT (0.36), AMT_GOODS_PRICE (0.36), and AMT_ANNUITY (0.31) show strong positive loadings, indicating that higher loan amounts, goods prices, and annuities are associated with late or no repayment (TARGET = 1). Additionally, DAYS_EMPLOYED (0.26) and DAYS_REGISTRATION (0.13) suggest that longer employment and account age may increase the likelihood of late repayment. Negative loadings for variables like REG_CITY_NOT_WORK_CITY (-0.36), LIVE_CITY_NOT_WORK_CITY (-0.30), and FLAG_WORK_PHONE (-0.14) imply that living and working in different cities or having a work phone is linked to timely repayment. This highlights the importance of financial and geographic factors in repayment behavior.
+The chart displays the top 10 most important features based on their importance scores. The bar lengths indicate each feature’s contribution to the model, with longer bars representing higher importance. PC13 stands out as the most important feature, followed by PC5, PC2, and others. 
 
 # Conclusions
 
-Our project aimed to determine whether an applicant’s social demographics and wealth factors are significant predictors of loan repayment. The results confirm that these factors play a critical role in predicting loan defaults. Among the models tested, Logistic Regression emerged as the most reliable in terms of precision, demonstrating that simpler, linear relationships are sufficient for accurate predictions in this dataset.
+In this project, we implemented Principal Component Analysis (PCA) to reduce dimensionality and trained three machine learning models—Logistic Regression, Random Forest, and XGBoost—on the transformed dataset to classify loan repayment status. PCA enabled us to eliminate multicollinearity, reduce noise, and retain the most informative structure of the data.
 
-The most important factors identified include external data sources `EXT_SOURCE_2` and `EXT_SOURCE_3`, which provided critical insights into an applicant’s creditworthiness. Variables like `DAYS_EMPLOYED`, `AMT_CREDIT`, and `AMT_GOODS_PRICE` also significantly influenced repayment likelihood, indicating that applicants' wealth and the characteristics of the loan need to be put into consideration when giving out loans. 
+Among the models, Logistic Regression with PCA achieved the highest test set accuracy at 70.5%, outperforming both XGBoost (66.9%) and Random Forest (66.5%). This was a surprising result, as simpler models like Logistic Regression are not always expected to outperform more complex ensemble methods. However, the dimensionality reduction provided by PCA made the data more linearly separable, favoring logistic regression’s performance.
 
-By focusing on these factors, our model effectively addressed the research question, providing a robust framework for Home Credit Group to make informed, data-driven lending decisions. This reinforces the potential of advanced analytics to enhance financial inclusion, enabling institutions to assess applicants with little to no traditional credit history.
+Analysis of the principal component loadings and model coefficients revealed several key factors:
+
+PC1, which was among the strongest positive predictors, had high contributions from variables like DAYS_EMPLOYED, DAY_EMPLOYED_PERCENT, and AGES, suggesting that employment stability and age are positively associated with repayment likelihood.
+
+PC2 and PC5, which were strong negative predictors, were heavily influenced by financial application variables such as AMT_CREDIT, AMT_ANNUITY, and DOCUMENT_COUNT, implying that higher credit amounts and document requirements may correlate with increased default risk.
+
+PC13, the most important feature in the XGBoost model, also had strong contributions from CNT_CHILDREN, NAME_FAMILY_STATUS, and CNT_FAM_MEMBERS, indicating the significance of household composition and family obligations in assessing repayment risk.
+
+The combination of dimensionality reduction and rigorous cross-validation allowed us to uncover these patterns while maintaining high predictive performance. This modeling pipeline highlights that even in high-dimensional settings, simpler models can be powerful when paired with the right pre-processing techniques and well-interpreted feature engineering.
 
 # Limitations
 
-The project leveraged PCA and Elastic Net to improve efficiency and mitigate computational limitations. However, with access to better computational resources, we could have explored a larger hyper-parameter space and tested more complex model configurations, which might have led to better performance. Additionally, while these models provided valuable insights, testing other advanced algorithms, such as neural networks or support vector machines, could potentially uncover better-performing methods for this dataset. 
+This project leveraged PCA and Logistic Regression to reduce dimensionality and improve computational efficiency. While this approach effectively enhanced model interpretability and generalization, there are several areas where the analysis could be further strengthened.
 
-The dataset was limited to six countries within the CIS and SEA regions. Expanding the data to include more diverse geographical regions and updated financial behaviors would enhance the model’s generalize and provide more robust predictive power. 
+First, computational constraints limited the breadth of hyperparameter tuning and restricted the training of more complex models such as deep neural networks or support vector machines. With more powerful computational resources, we could explore a wider hyperparameter space and more advanced algorithms that may capture non-linear patterns more effectively.
 
-While efforts were made to minimize bias, the reliance on demographic variables might inadvertently perpetuate societal inequalities. A more thorough integration of fairness-aware machine learning algorithms could help address this issue and make the model more equitable.
+Second, the dataset was confined to a subset of six countries in the CIS and Southeast Asia regions. This narrow geographic scope may limit the model’s generalizability. Incorporating more diverse regions and up-to-date financial behavior data would improve both the robustness and global applicability of the predictive models.
+
+Third, although PCA helps reduce redundancy and multicollinearity, it transforms features into latent components, which can make interpretation less intuitive. While we analyzed component loadings, some loss of transparency in individual variable effects may impact practical implementation and stakeholder communication.
+
+Finally, several important predictors were demographic in nature (e.g., gender, age, employment history), which, while predictive, raise concerns about fairness and potential bias. Despite efforts to minimize these risks, future work should explore fairness-aware modeling techniques to ensure equitable outcomes across different population groups.
 
 # Reference
 
